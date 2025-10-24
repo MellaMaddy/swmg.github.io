@@ -51,7 +51,7 @@ h1{
     display:flex;
     align-items:center;
     margin-bottom:15px;
-    max-width: 50%;
+    max-width: 70%;
 }
 .box button{
     background-color: purple;
@@ -59,6 +59,8 @@ h1{
     border-radius: 5px;
     width: 40%;
     font-size:20px;
+    margin: 0 auto;
+    display: block;
 
 }
 .box button:hover{
