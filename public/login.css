@@ -1,0 +1,68 @@
+body{
+    background-image: url("images/background website.jpg");
+    background-repeat: no-repeat;
+    background-size: cover;
+    background-attachment: fixed;
+}
+.Logo{
+      width: 10vw;            
+    height: 10vw;            
+    max-width: 150px;       
+    max-height: 150px;
+    background-image: url("images/Purrlock.jpg");
+    background-size: cover;
+    background-position: center;
+    border: 1px solid purple;
+    border-radius: 8px;
+    
+}
+.box{
+     width: 40%;
+     min-height: 200px;
+     height:auto;
+    padding: 20px;
+    margin: 50px auto;
+    background-color: white; 
+    border: 1px solid #ccc; 
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items:center;
+}
+h1{
+    font-family:serif;
+    color: white;
+    text-align: center;
+}
+.box label{
+    display: block;
+    text-align: center;
+    margin-bottom: 5px;
+    color: purple;
+    padding:5px;
+
+}
+.box input{
+    width:100%;
+    padding: 10px;
+    border: 2px solid purple;
+}
+.form-row{
+    display:flex;
+    align-items:center;
+    margin-bottom:15px;
+    max-width: 70%;
+}
+.box button{
+    background-color: purple;
+    color:white;
+    border-radius: 5px;
+    width: 40%;
+    font-size:20px;
+    margin: 0 auto;
+    display: block;
+
+}
+.box button:hover{
+    background-color: red;
+}
