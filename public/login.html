@@ -1,24 +1,29 @@
 <!DOCTYPE html>
 <html lang="en">
-    <head>
-     <link rel ="stylesheet" href ="login.css">
-     <div class = "Logo"></div>
-    </head>
-    <body>
-        <h1>Login</h1>
-        <div class= "box">
-        <form action="process_form.php" method="post"> 
-           <div class="form-row"> 
-                <label for="Username">Username:</label>
-                <input type="text" name="username" id="username"><br>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <link rel="stylesheet" href="login.css">
+</head>
+<body>
+    <div class="Logo"></div>
+    <h1>Login</h1>
+    <div class="box">
+        <!-- Single login form -->
+        <form action="/login" method="POST">
+            <div class="form-row">
+                <label for="username">Username:</label>
+                <input type="text" name="username" id="username" placeholder="Username" required>
             </div>
+
             <div class="form-row">
                 <label for="password">Password:</label>
-                 <input type="text" name="password" id="password"><br>
-             </div> 
-        <button class="btn">Log In!</button>
-       
-        </div>
+                <input type="password" name="password" id="password" placeholder="Password" required>
+            </div>
+
+            <button type="submit" class="btn">Log In</button>
         </form>
-        
-    </body>
+    </div>
+</body>
+</html>
