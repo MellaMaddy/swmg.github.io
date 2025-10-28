@@ -21,7 +21,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(
   session({
-    secret: "yourSecretKey", // Change to a strong random string for testing
+    secret: "yourSecretKey", // Change to a strong random string
     resave: false,
     saveUninitialized: true,
   })
@@ -48,7 +48,6 @@ app.post("/register", async (req, res) => {
   const password = req.body.password.trim();
 
   try {
-    // Check if user already exists
     const existing = await pool.query(
       "SELECT * FROM users WHERE username = $1",
       [username]
@@ -58,13 +57,11 @@ app.post("/register", async (req, res) => {
       return res.send("Username already taken");
     }
 
-    // Insert user WITHOUT hashing
     const result = await pool.query(
       "INSERT INTO users (username, password) VALUES ($1, $2) RETURNING id",
       [username, password]
     );
 
-    // Auto-login after registration
     req.session.userId = result.rows[0].id;
     req.session.username = username;
 
@@ -92,12 +89,10 @@ app.post("/login", async (req, res) => {
 
     const user = result.rows[0];
 
-    // Compare plain text passwords
     if (password !== user.password) {
       return res.send("Incorrect password");
     }
 
-    // Store session info
     req.session.userId = user.id;
     req.session.username = user.username;
 
@@ -109,24 +104,48 @@ app.post("/login", async (req, res) => {
 });
 
 // Chat page (protected)
-app.get("/chat.html", authMiddleware, (req, res) => {
+app.get("/chat.html", authMiddleware, async (req, res) => {
   res.sendFile(path.join(__dirname, "public", "chat.html"));
 });
 
-// Socket.io for chat
+// Socket.io for private chat
 io.on("connection", (socket) => {
-  console.log("a user connected");
+  // Retrieve userId from query string
+  const userId = socket.handshake.query.userId;
 
-  socket.on("chat message", (msg) => {
-    io.emit("chat message", msg);
+  if (!userId) return;
+
+  socket.join(`user_${userId}`);
+
+  // Send previous messages to the user
+  (async () => {
+    const messages = await pool.query(
+      "SELECT message FROM messages WHERE user_id = $1 ORDER BY created_at ASC",
+      [userId]
+    );
+
+    messages.rows.forEach((row) => {
+      socket.emit("chat message", row.message);
+    });
+  })();
+
+  // Handle incoming messages
+  socket.on("chat message", async (msg) => {
+    // Save message to DB
+    await pool.query(
+      "INSERT INTO messages (user_id, message) VALUES ($1, $2)",
+      [userId, msg]
+    );
+
+    // Emit message only to this user's room
+    io.to(`user_${userId}`).emit("chat message", msg);
   });
 
   socket.on("disconnect", () => {
-    console.log("user disconnected");
+    console.log(`User ${userId} disconnected`);
   });
 });
 
 // Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
