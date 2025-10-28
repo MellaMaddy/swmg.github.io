@@ -3,7 +3,6 @@ const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const session = require("express-session");
-const bcrypt = require("bcrypt");
 const { Pool } = require("pg");
 const path = require("path");
 
@@ -22,7 +21,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(
   session({
-    secret: "yourSecretKey", // Change to a strong random string
+    secret: "yourSecretKey", // Change to a strong random string for testing
     resave: false,
     saveUninitialized: true,
   })
@@ -45,7 +44,8 @@ app.get("/", (req, res) => {
 
 // Registration
 app.post("/register", async (req, res) => {
-  const { username, password } = req.body;
+  const username = req.body.username.trim();
+  const password = req.body.password.trim();
 
   try {
     // Check if user already exists
@@ -58,20 +58,16 @@ app.post("/register", async (req, res) => {
       return res.send("Username already taken");
     }
 
-    // Hash password
-    const hashed = await bcrypt.hash(password, 10);
-
-    // Insert user
+    // Insert user WITHOUT hashing
     const result = await pool.query(
       "INSERT INTO users (username, password) VALUES ($1, $2) RETURNING id",
-      [username, hashed]
+      [username, password]
     );
 
     // Auto-login after registration
     req.session.userId = result.rows[0].id;
     req.session.username = username;
 
-    // ✅ Redirect to chat if successful
     res.redirect("/chat.html");
   } catch (err) {
     console.error("Error registering user:", err);
@@ -81,7 +77,8 @@ app.post("/register", async (req, res) => {
 
 // Login
 app.post("/login", async (req, res) => {
-  const { username, password } = req.body;
+  const username = req.body.username.trim();
+  const password = req.body.password.trim();
 
   try {
     const result = await pool.query(
@@ -94,9 +91,9 @@ app.post("/login", async (req, res) => {
     }
 
     const user = result.rows[0];
-    const match = await bcrypt.compare(password, user.password);
 
-    if (!match) {
+    // Compare plain text passwords
+    if (password !== user.password) {
       return res.send("Incorrect password");
     }
 
@@ -104,7 +101,6 @@ app.post("/login", async (req, res) => {
     req.session.userId = user.id;
     req.session.username = user.username;
 
-    // ✅ Redirect to chat page after successful login
     res.redirect("/chat.html");
   } catch (err) {
     console.error("Error logging in:", err);
@@ -133,5 +129,4 @@ io.on("connection", (socket) => {
 // Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
 
