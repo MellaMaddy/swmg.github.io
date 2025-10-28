@@ -1,10 +1,11 @@
+require("dotenv").config();
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const session = require("express-session");
 const bcrypt = require("bcrypt");
 const { Pool } = require("pg");
-require("dotenv").config();
+const path = require("path");
 
 const app = express();
 const server = http.createServer(app);
@@ -13,19 +14,19 @@ const io = new Server(server);
 // PostgreSQL connection
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false, // for Render
-  },
+  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
 });
 
 // Middleware
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
-app.use(session({
-  secret: "yourSecretKey", // change to a strong random string
-  resave: false,
-  saveUninitialized: true
-}));
+app.use(
+  session({
+    secret: "yourSecretKey", // Change to a strong random string
+    resave: false,
+    saveUninitialized: true,
+  })
+);
 app.use(express.static("public"));
 
 // Auth middleware
@@ -38,7 +39,9 @@ function authMiddleware(req, res, next) {
 }
 
 // Routes
-app.get("/", (req, res) => res.sendFile(__dirname + "/public/login.html"));
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "login.html"));
+});
 
 // Registration
 app.post("/register", async (req, res) => {
@@ -64,14 +67,15 @@ app.post("/register", async (req, res) => {
       [username, hashed]
     );
 
-    // Auto-login
+    // Auto-login after registration
     req.session.userId = result.rows[0].id;
     req.session.username = username;
 
+    // ✅ Redirect to chat if successful
     res.redirect("/chat.html");
   } catch (err) {
-    console.error(err);
-    res.send("Error registering user");
+    console.error("Error registering user:", err);
+    res.status(500).send("Error registering user");
   }
 });
 
@@ -85,26 +89,32 @@ app.post("/login", async (req, res) => {
       [username]
     );
 
-    if (result.rows.length === 0) return res.send("User not found");
+    if (result.rows.length === 0) {
+      return res.send("User not found");
+    }
 
     const user = result.rows[0];
     const match = await bcrypt.compare(password, user.password);
 
-    if (!match) return res.send("Incorrect password");
+    if (!match) {
+      return res.send("Incorrect password");
+    }
 
+    // Store session info
     req.session.userId = user.id;
     req.session.username = user.username;
 
+    // ✅ Redirect to chat page after successful login
     res.redirect("/chat.html");
   } catch (err) {
-    console.error(err);
-    res.send("Error logging in");
+    console.error("Error logging in:", err);
+    res.status(500).send("Error logging in");
   }
 });
 
 // Chat page (protected)
 app.get("/chat.html", authMiddleware, (req, res) => {
-  res.sendFile(__dirname + "/public/chat.html");
+  res.sendFile(path.join(__dirname, "public", "chat.html"));
 });
 
 // Socket.io for chat
@@ -115,10 +125,13 @@ io.on("connection", (socket) => {
     io.emit("chat message", msg);
   });
 
-  socket.on("disconnect", () => console.log("user disconnected"));
+  socket.on("disconnect", () => {
+    console.log("user disconnected");
+  });
 });
 
 // Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
