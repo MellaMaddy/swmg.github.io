@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <title>Chat Room</title>
-    <link rel="stylesheet" href="login.css">
     <style>
         body { font-family: Arial, sans-serif; }
         #chat-box { 
@@ -23,7 +22,7 @@
     </style>
 </head>
 <body>
-    <h2>Welcome!</h2> <!-- You can replace with session username via server-side rendering if needed -->
+    <h2>Welcome!</h2>
 
     <ul id="messages" style="list-style: none; padding-left: 0;"></ul>
 
@@ -34,10 +33,11 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        // Connect to Socket.io — no need to pass userId, session is handled server-side
         const socket = io();
 
-        // Handle sending a message
+        const messagesList = document.getElementById("messages");
+
+        // Send a new message
         document.getElementById("chat-form").onsubmit = (e) => {
             e.preventDefault();
             const input = document.getElementById("msg");
@@ -48,7 +48,6 @@
         };
 
         // Display incoming messages
-        const messagesList = document.getElementById("messages");
         socket.on("chat message", (msg) => {
             const li = document.createElement("li");
             li.textContent = msg;
@@ -59,3 +58,4 @@
     </script>
 </body>
 </html>
+
