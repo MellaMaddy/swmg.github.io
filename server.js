@@ -19,23 +19,24 @@ const pool = new Pool({
 // Middleware
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
-app.use(
-  session({
-    secret: "yourSecretKey", // Change to a strong random string
-    resave: false,
-    saveUninitialized: true,
-  })
-);
+const sessionMiddleware = session({
+  secret: "yourSecretKey",
+  resave: false,
+  saveUninitialized: true,
+});
+app.use(sessionMiddleware);
 app.use(express.static("public"));
 
 // Auth middleware
 function authMiddleware(req, res, next) {
-  if (req.session.userId) {
-    next();
-  } else {
-    res.redirect("/login.html");
-  }
+  if (req.session.userId) next();
+  else res.redirect("/login.html");
 }
+
+// Share session with Socket.io
+io.use((socket, next) => {
+  sessionMiddleware(socket.request, {}, next);
+});
 
 // Routes
 app.get("/", (req, res) => {
@@ -52,10 +53,7 @@ app.post("/register", async (req, res) => {
       "SELECT * FROM users WHERE username = $1",
       [username]
     );
-
-    if (existing.rows.length > 0) {
-      return res.send("Username already taken");
-    }
+    if (existing.rows.length > 0) return res.send("Username already taken");
 
     const result = await pool.query(
       "INSERT INTO users (username, password) VALUES ($1, $2) RETURNING id",
@@ -64,10 +62,9 @@ app.post("/register", async (req, res) => {
 
     req.session.userId = result.rows[0].id;
     req.session.username = username;
-
     res.redirect("/chat.html");
   } catch (err) {
-    console.error("Error registering user:", err);
+    console.error(err);
     res.status(500).send("Error registering user");
   }
 });
@@ -82,23 +79,16 @@ app.post("/login", async (req, res) => {
       "SELECT * FROM users WHERE username = $1",
       [username]
     );
-
-    if (result.rows.length === 0) {
-      return res.send("User not found");
-    }
+    if (result.rows.length === 0) return res.send("User not found");
 
     const user = result.rows[0];
-
-    if (password !== user.password) {
-      return res.send("Incorrect password");
-    }
+    if (password !== user.password) return res.send("Incorrect password");
 
     req.session.userId = user.id;
     req.session.username = user.username;
-
     res.redirect("/chat.html");
   } catch (err) {
-    console.error("Error logging in:", err);
+    console.error(err);
     res.status(500).send("Error logging in");
   }
 });
@@ -108,36 +98,23 @@ app.get("/chat.html", authMiddleware, (req, res) => {
   res.sendFile(path.join(__dirname, "public", "chat.html"));
 });
 
-// Socket.io with session support
-io.use((socket, next) => {
-  const sessionMiddleware = session({
-    secret: "yourSecretKey",
-    resave: false,
-    saveUninitialized: true,
-  });
-
-  sessionMiddleware(socket.request, {}, next);
-});
-
+// Socket.io for real-time chat
 io.on("connection", async (socket) => {
   const req = socket.request;
   const userId = req.session?.userId;
+  const username = req.session?.username;
 
-  if (!userId) {
-    console.log("Unauthorized socket connection attempted");
-    return socket.disconnect(true);
-  }
-
-  console.log(`User ${userId} connected`);
+  if (!userId) return socket.disconnect(true);
   socket.join(`user_${userId}`);
 
-  // Send previous messages
+  console.log(`User ${username} connected`);
+
+  // Send previous messages to user
   try {
     const messages = await pool.query(
       "SELECT message, created_at FROM messages WHERE user_id = $1 ORDER BY created_at ASC",
       [userId]
     );
-
     messages.rows.forEach((row) => {
       socket.emit("chat message", row.message);
     });
@@ -154,7 +131,6 @@ io.on("connection", async (socket) => {
         "INSERT INTO messages (user_id, message) VALUES ($1, $2)",
         [userId, msg.trim()]
       );
-
       io.to(`user_${userId}`).emit("chat message", msg.trim());
     } catch (err) {
       console.error("Error saving message:", err);
@@ -162,11 +138,10 @@ io.on("connection", async (socket) => {
   });
 
   socket.on("disconnect", () => {
-    console.log(`User ${userId} disconnected`);
+    console.log(`User ${username} disconnected`);
   });
 });
 
 // Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-ort ${PORT}`));
