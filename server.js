@@ -104,41 +104,61 @@ app.post("/login", async (req, res) => {
 });
 
 // Chat page (protected)
-app.get("/chat.html", authMiddleware, async (req, res) => {
+app.get("/chat.html", authMiddleware, (req, res) => {
   res.sendFile(path.join(__dirname, "public", "chat.html"));
 });
 
-// Socket.io for private chat
-io.on("connection", (socket) => {
-  // Retrieve userId from query string
-  const userId = socket.handshake.query.userId;
+// Socket.io with session support
+io.use((socket, next) => {
+  const sessionMiddleware = session({
+    secret: "yourSecretKey",
+    resave: false,
+    saveUninitialized: true,
+  });
 
-  if (!userId) return;
+  sessionMiddleware(socket.request, {}, next);
+});
 
+io.on("connection", async (socket) => {
+  const req = socket.request;
+  const userId = req.session?.userId;
+
+  if (!userId) {
+    console.log("Unauthorized socket connection attempted");
+    return socket.disconnect(true);
+  }
+
+  console.log(`User ${userId} connected`);
   socket.join(`user_${userId}`);
 
-  // Send previous messages to the user
-  (async () => {
+  // Send previous messages
+  try {
     const messages = await pool.query(
-      "SELECT message FROM messages WHERE user_id = $1 ORDER BY created_at ASC",
+      "SELECT message, created_at FROM messages WHERE user_id = $1 ORDER BY created_at ASC",
       [userId]
     );
 
     messages.rows.forEach((row) => {
       socket.emit("chat message", row.message);
     });
-  })();
+  } catch (err) {
+    console.error("Error fetching messages:", err);
+  }
 
   // Handle incoming messages
   socket.on("chat message", async (msg) => {
-    // Save message to DB
-    await pool.query(
-      "INSERT INTO messages (user_id, message) VALUES ($1, $2)",
-      [userId, msg]
-    );
+    if (!msg || msg.trim() === "") return;
 
-    // Emit message only to this user's room
-    io.to(`user_${userId}`).emit("chat message", msg);
+    try {
+      await pool.query(
+        "INSERT INTO messages (user_id, message) VALUES ($1, $2)",
+        [userId, msg.trim()]
+      );
+
+      io.to(`user_${userId}`).emit("chat message", msg.trim());
+    } catch (err) {
+      console.error("Error saving message:", err);
+    }
   });
 
   socket.on("disconnect", () => {
@@ -149,3 +169,4 @@ io.on("connection", (socket) => {
 // Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+ort ${PORT}`));
