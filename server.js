@@ -5,6 +5,30 @@ const session = require("express-session");
 const bcrypt = require("bcrypt");
 const { Pool } = require("pg");
 require("dotenv").config();
+const crypto = require('crypto');
+
+// Encryption functions
+function encrypt(text, key) {
+  const algorithm = 'aes-256-cbc';
+  const keyBuffer = crypto.scryptSync(key, 'salt', 32);
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv(algorithm, keyBuffer, iv);
+  let encrypted = cipher.update(text, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  return iv.toString('hex') + ':' + encrypted;
+}
+
+function decrypt(encryptedText, key) {
+  const algorithm = 'aes-256-cbc';
+  const keyBuffer = crypto.scryptSync(key, 'salt', 32);
+  const parts = encryptedText.split(':');
+  const iv = Buffer.from(parts[0], 'hex');
+  const encrypted = parts[1];
+  const decipher = crypto.createDecipheriv(algorithm, keyBuffer, iv);
+  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
+}
 
 const app = express();
 const server = http.createServer(app);
@@ -116,6 +140,59 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => console.log("user disconnected"));
+});
+
+// API for current user
+app.get("/api/current-user", authMiddleware, (req, res) => {
+  res.json({ 
+    userId: req.session.userId, 
+    username: req.session.username 
+  });
+});
+
+// Send encrypted message (can message yourself for testing)
+app.post("/api/send-message", authMiddleware, async (req, res) => {
+  const { message, encryptionKey } = req.body;
+  
+  try {
+    const encryptedMessage = encrypt(message, encryptionKey);
+    
+    await pool.query(
+      "INSERT INTO messages (sender_id, receiver_id, encrypted_message) VALUES ($1, $2, $3)",
+      [req.session.userId, req.session.userId, encryptedMessage]
+    );
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Get all messages for current user (sent to themselves)
+app.get("/api/my-messages", authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM messages WHERE sender_id = $1 AND receiver_id = $1 ORDER BY sent_at ASC",
+      [req.session.userId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.json([]);
+  }
+});
+
+// Decrypt a message
+app.post("/api/decrypt-message", authMiddleware, (req, res) => {
+  const { encryptedMessage, encryptionKey } = req.body;
+  
+  try {
+    const decrypted = decrypt(encryptedMessage, encryptionKey);
+    res.json({ success: true, message: decrypted });
+  } catch (err) {
+    res.json({ success: false, error: "Wrong encryption key" });
+  }
 });
 
 // Start server
