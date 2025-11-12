@@ -1,7 +1,118 @@
-<!DOCTYPE html>
-<html lang="en">
-    <head>
-     <link rel ="stylesheet" href ="login.css">
-     <div class = "Logo"></div>
-    </head>
-    <body>
+<script>
+  let currentUser = null;
+
+  // Get current user
+  async function init() {
+    try {
+      const res = await fetch('/api/current-user');
+      currentUser = await res.json();
+      loadMessages();
+    } catch (err) {
+      console.error('Error:', err);
+      window.location.href = '/login.html';
+    }
+  }
+
+  // Load all messages
+  async function loadMessages() {
+    try {
+      const res = await fetch('/api/my-messages');
+      const messages = await res.json();
+      
+      const messagesDiv = document.getElementById('messages');
+      messagesDiv.innerHTML = '';
+      
+      const encryptionKey = document.getElementById('encryptionKey').value;
+      
+      for (const msg of messages) {
+        const li = document.createElement('li');
+        
+        let messageText = '';
+        
+        if (encryptionKey) {
+          try {
+            const decryptRes = await fetch('/api/decrypt-message', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                encryptedMessage: msg.encrypted_message,
+                encryptionKey: encryptionKey
+              })
+            });
+            const data = await decryptRes.json();
+            messageText = data.success ? data.message : '🔒 [Wrong key]';
+          } catch (err) {
+            messageText = '🔒 [Decryption failed]';
+          }
+        } else {
+          messageText = '🔒 [Enter encryption key to view]';
+        }
+        
+        const timestamp = new Date(msg.sent_at).toLocaleTimeString();
+        li.textContent = `${timestamp}: ${messageText}`;
+        li.style.padding = '8px';
+        li.style.background = '#f0f0f0';
+        li.style.marginBottom = '5px';
+        li.style.borderRadius = '5px';
+        
+        messagesDiv.appendChild(li);
+      }
+      
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    } catch (err) {
+      console.error('Error loading messages:', err);
+    }
+  }
+
+  // Send encrypted message
+  async function sendMessage() {
+    const input = document.getElementById('messageInput');
+    const message = input.value.trim();
+    const encryptionKey = document.getElementById('encryptionKey').value;
+    
+    if (!message) return;
+    
+    if (!encryptionKey) {
+      alert('⚠️ Please enter an encryption key first!');
+      return;
+    }
+    
+    try {
+      const res = await fetch('/api/send-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, encryptionKey })
+      });
+      
+      const data = await res.json();
+      
+      if (data.success) {
+        input.value = '';
+        loadMessages();
+      } else {
+        alert('Failed to send message: ' + (data.error || 'Unknown error'));
+      }
+    } catch (err) {
+      console.error('Error sending:', err);
+      alert('Error sending message');
+    }
+  }
+
+  // Setup form
+  const form = document.querySelector('form');
+  if (form) {
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      sendMessage();
+    });
+  }
+
+  // Refresh when key changes
+  const keyInput = document.getElementById('encryptionKey');
+  if (keyInput) {
+    keyInput.addEventListener('input', loadMessages);
+  }
+
+  // Start
+  init();
+</script>
