@@ -118,3 +118,26 @@ h1 {
 #user-list-panel li:hover {
     background: #ddd;
 }
+/* Chat messages text color with electric neon glow */
+#messages li {
+    color: #FF00FF; /* Electric pink */
+    font-weight: bold;
+    margin-bottom: 5px;
+    text-shadow: 
+        0 0 5px #FF00FF,
+        0 0 10px #FF00FF,
+        0 0 20px #FF00FF,
+        0 0 40px #FF69B4,
+        0 0 80px #FF69B4;
+}
+
+/* Optional: distinguish private messages */
+#messages li.private {
+    color: #FF69B4; /* Hot pink for private messages */
+    text-shadow: 
+        0 0 5px #FF69B4,
+        0 0 10px #FF69B4,
+        0 0 20px #FF69B4,
+        0 0 40px #FF1493,
+        0 0 80px #FF1493;
+}
