@@ -151,6 +151,59 @@ io.on("connection", (socket) => {
   });
 });
 
+// API for current user
+app.get("/api/current-user", authMiddleware, (req, res) => {
+  res.json({ 
+    userId: req.session.userId, 
+    username: req.session.username 
+  });
+});
+
+// Send encrypted message (can message yourself for testing)
+app.post("/api/send-message", authMiddleware, async (req, res) => {
+  const { message, encryptionKey } = req.body;
+  
+  try {
+    const encryptedMessage = encrypt(message, encryptionKey);
+    
+    await pool.query(
+      "INSERT INTO messages (sender_id, receiver_id, encrypted_message) VALUES ($1, $2, $3)",
+      [req.session.userId, req.session.userId, encryptedMessage]
+    );
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// Get all messages for current user (sent to themselves)
+app.get("/api/my-messages", authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM messages WHERE sender_id = $1 AND receiver_id = $1 ORDER BY sent_at ASC",
+      [req.session.userId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.json([]);
+  }
+});
+
+// Decrypt a message
+app.post("/api/decrypt-message", authMiddleware, (req, res) => {
+  const { encryptedMessage, encryptionKey } = req.body;
+  
+  try {
+    const decrypted = decrypt(encryptedMessage, encryptionKey);
+    res.json({ success: true, message: decrypted });
+  } catch (err) {
+    res.json({ success: false, error: "Wrong encryption key" });
+  }
+});
+
 // Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
