@@ -7,40 +7,109 @@
 </head>
 <body>
 
-    <div class="chat-container">
-        <h2>Chat Room</h2>
-
-        <ul id="messages"></ul>
-
-        <form id="chat-form">
-            <input type="text" id="msg" placeholder="Type your message..." autocomplete="off" required>
-            <button type="submit">Send</button>
-        </form>
+    <!-- Username Login Screen -->
+    <div id="username-screen">
+        <h2>Enter a Username</h2>
+        <input type="text" id="username-input" placeholder="Your name..." required>
+        <button id="enter-chat">Join Chat</button>
     </div>
 
+    <!-- Chat Layout With User List + Chat Window -->
+    <div id="chat-layout" style="display:none;">
+
+        <!-- Online User List -->
+        <div id="user-list-panel">
+            <h3>Users</h3>
+            <ul id="user-list"></ul>
+        </div>
+
+        <!-- Main Chat Container -->
+        <div class="chat-container">
+            <h2>Chat Room</h2>
+
+            <ul id="messages"></ul>
+
+            <form id="chat-form">
+                <input type="text" id="msg" placeholder="Type your message..." autocomplete="off" required>
+                <button type="submit">Send</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Socket.IO & Chat Logic -->
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
+        let username = "";
+
         const messagesList = document.getElementById("messages");
 
-        // Send message
+        // Join chat with a username
+        document.getElementById("enter-chat").onclick = () => {
+            username = document.getElementById("username-input").value.trim();
+            if (!username) return;
+
+            socket.emit("set username", username); 
+
+            document.getElementById("username-screen").style.display = "none";
+            document.getElementById("chat-layout").style.display = "flex";
+        };
+
+        // Update online user list
+        socket.on("user list", (users) => {
+            const list = document.getElementById("user-list");
+            list.innerHTML = "";
+
+            users.forEach(user => {
+                if (user !== username) {
+                    const li = document.createElement("li");
+                    li.textContent = user;
+                    li.onclick = () => openPrivateMessage(user);
+                    list.appendChild(li);
+                }
+            });
+        });
+
+        // Private message function
+        function openPrivateMessage(targetUser) {
+            const message = prompt(`Send private message to ${targetUser}:`);
+            if (!message) return;
+
+            socket.emit("private message", {
+                to: targetUser,
+                message,
+                from: username
+            });
+        }
+
+        // Receive private message
+        socket.on("private message", ({ from, message }) => {
+            const li = document.createElement("li");
+            li.className = "message private";
+            li.innerHTML = `<strong>(Private) ${from}:</strong> ${message}`;
+            messagesList.appendChild(li);
+        });
+
+        // Send public message
         document.getElementById("chat-form").onsubmit = (e) => {
             e.preventDefault();
             const input = document.getElementById("msg");
-            const message = input.value.trim();
-            if (!message) return;
-            socket.emit("chat message", message);
+            const text = input.value.trim();
+            if (!text) return;
+
+            socket.emit("chat message", { user: username, text });
             input.value = "";
         };
 
-        // Display message
+        // Display public message
         socket.on("chat message", (msg) => {
             const li = document.createElement("li");
             li.className = "message";
-            li.textContent = msg;
+            li.innerHTML = `<strong>${msg.user}:</strong> ${msg.text}`;
             messagesList.appendChild(li);
             messagesList.scrollTop = messagesList.scrollHeight;
         });
     </script>
+
 </body>
 </html>
