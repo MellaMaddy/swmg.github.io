@@ -33,7 +33,7 @@ function authMiddleware(req, res, next) {
   else res.redirect("/login.html");
 }
 
-// Share session with Socket.io
+// Share sessions with Socket.IO
 io.use((socket, next) => {
   sessionMiddleware(socket.request, {}, next);
 });
@@ -93,92 +93,64 @@ app.post("/login", async (req, res) => {
   }
 });
 
-// Chat page (protected)
+// Chat (protected)
 app.get("/chat.html", authMiddleware, (req, res) => {
   res.sendFile(path.join(__dirname, "public", "chat.html"));
 });
 
-// Socket.io for real-time chat
-io.on("connection", async (socket) => {
+// ------------------------
+// REAL-TIME CHAT SYSTEM
+// ------------------------
+
+const users = {};  // socket.id → username
+
+io.on("connection", (socket) => {
   const req = socket.request;
-  const userId = req.session?.userId;
   const username = req.session?.username;
 
-  if (!userId) return socket.disconnect(true);
-  socket.join(`user_${userId}`);
-
-  console.log(`User ${username} connected`);
-
-  // Send previous messages to user
-  try {
-    const messages = await pool.query(
-      "SELECT message, created_at FROM messages WHERE user_id = $1 ORDER BY created_at ASC",
-      [userId]
-    );
-    messages.rows.forEach((row) => {
-      socket.emit("chat message", row.message);
-    });
-  } catch (err) {
-    console.error("Error fetching messages:", err);
+  if (!username) {
+    return socket.disconnect(true);
   }
 
-  // Handle incoming messages
-  socket.on("chat message", async (msg) => {
-    if (!msg || msg.trim() === "") return;
+  console.log(`User connected: ${username}`);
 
-    try {
-      await pool.query(
-        "INSERT INTO messages (user_id, message) VALUES ($1, $2)",
-        [userId, msg.trim()]
-      );
-      io.to(`user_${userId}`).emit("chat message", msg.trim());
-    } catch (err) {
-      console.error("Error saving message:", err);
+  //-------------------------
+  // USER JOINS THE CHAT
+  //-------------------------
+  socket.on("set username", () => {
+    users[socket.id] = username;
+    io.emit("user list", Object.values(users));
+  });
+
+  //-------------------------
+  // PUBLIC MESSAGE
+  //-------------------------
+  socket.on("chat message", (msg) => {
+    io.emit("chat message", msg);   // msg = { user, text }
+  });
+
+  //-------------------------
+  // PRIVATE MESSAGE
+  //-------------------------
+  socket.on("private message", ({ to, message, from }) => {
+    let targetId = Object.keys(users).find(id => users[id] === to);
+
+    if (targetId) {
+      io.to(targetId).emit("private message", { from, message });
+      socket.emit("private message", { from, message }); // sender sees their own message
     }
   });
 
+  //-------------------------
+  // DISCONNECT
+  //-------------------------
   socket.on("disconnect", () => {
-    console.log(`User ${username} disconnected`);
+    delete users[socket.id];
+    io.emit("user list", Object.values(users));
+    console.log(`User disconnected: ${username}`);
   });
 });
 
 // Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
-
-
-const users = {}; // socket.id -> username
-
-io.on("connection", (socket) => {
-    console.log("User connected");
-
-    // When a user joins with a username
-    socket.on("set username", (username) => {
-        users[socket.id] = username;
-        io.emit("user list", Object.values(users));
-    });
-
-    // Public chat
-    socket.on("chat message", (msg) => {
-        io.emit("chat message", msg);
-    });
-
-    // Private messaging
-    socket.on("private message", ({ to, message, from }) => {
-        // find socket id by username
-        let targetId = Object.keys(users).find(
-            id => users[id] === to
-        );
-        if (targetId) {
-            io.to(targetId).emit("private message", { from, message });
-            socket.emit("private message", { from, message }); // show sender copy
-        }
-    });
-
-    socket.on("disconnect", () => {
-        delete users[socket.id];
-        io.emit("user list", Object.values(users));
-    });
-});
-
