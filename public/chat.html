@@ -2,43 +2,28 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <link rel="stylesheet" href="login.css">
     <title>Chat Room</title>
-    <style>
-        body { font-family: Arial, sans-serif; }
-        #chat-box { 
-            border: 1px solid #ccc; 
-            padding: 10px; 
-            width: 500px; 
-            height: 400px; 
-            overflow-y: scroll; 
-            margin-bottom: 10px;
-        }
-        #chat-form { display: flex; }
-        #chat-form input[type="text"] { flex: 1; padding: 5px; }
-        #chat-form button { padding: 5px 10px; }
-        .message { margin-bottom: 8px; }
-        .message strong { color: #333; }
-        .timestamp { font-size: 0.8em; color: #999; }
-    </style>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <h2>Welcome!</h2>
 
-    <ul id="messages" style="list-style: none; padding-left: 0;"></ul>
+    <div class="chat-container">
+        <h2>Chat Room</h2>
 
-    <form id="chat-form">
-        <input type="text" id="msg" placeholder="Type your message..." required>
-        <button type="submit">Send</button>
-    </form>
+        <ul id="messages"></ul>
+
+        <form id="chat-form">
+            <input type="text" id="msg" placeholder="Type your message..." autocomplete="off" required>
+            <button type="submit">Send</button>
+        </form>
+    </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
-
         const messagesList = document.getElementById("messages");
 
-        // Send a new message
+        // Send message
         document.getElementById("chat-form").onsubmit = (e) => {
             e.preventDefault();
             const input = document.getElementById("msg");
@@ -48,15 +33,14 @@
             input.value = "";
         };
 
-        // Display incoming messages
+        // Display message
         socket.on("chat message", (msg) => {
             const li = document.createElement("li");
-            li.textContent = msg;
             li.className = "message";
+            li.textContent = msg;
             messagesList.appendChild(li);
             messagesList.scrollTop = messagesList.scrollHeight;
         });
     </script>
 </body>
 </html>
-
