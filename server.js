@@ -145,3 +145,40 @@ io.on("connection", async (socket) => {
 // Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+
+
+const users = {}; // socket.id -> username
+
+io.on("connection", (socket) => {
+    console.log("User connected");
+
+    // When a user joins with a username
+    socket.on("set username", (username) => {
+        users[socket.id] = username;
+        io.emit("user list", Object.values(users));
+    });
+
+    // Public chat
+    socket.on("chat message", (msg) => {
+        io.emit("chat message", msg);
+    });
+
+    // Private messaging
+    socket.on("private message", ({ to, message, from }) => {
+        // find socket id by username
+        let targetId = Object.keys(users).find(
+            id => users[id] === to
+        );
+        if (targetId) {
+            io.to(targetId).emit("private message", { from, message });
+            socket.emit("private message", { from, message }); // show sender copy
+        }
+    });
+
+    socket.on("disconnect", () => {
+        delete users[socket.id];
+        io.emit("user list", Object.values(users));
+    });
+});
+
