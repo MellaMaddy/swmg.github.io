@@ -8,7 +8,7 @@
 <body>
 
     <!-- Chat Layout With User List + Chat Window -->
-    <div id="chat-layout" style="display:none;">
+    <div id="chat-layout" style="display:flex;">
 
         <!-- Online User List -->
         <div id="user-list-panel">
@@ -33,20 +33,14 @@
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
-        let username = "";
+
+        // Automatically assign a random username
+        const username = "User" + Math.floor(Math.random() * 1000);
 
         const messagesList = document.getElementById("messages");
 
-        // Join chat with a username
-        document.getElementById("enter-chat").onclick = () => {
-            username = document.getElementById("username-input").value.trim();
-            if (!username) return;
-
-            socket.emit("set username", username); 
-
-            document.getElementById("username-screen").style.display = "none";
-            document.getElementById("chat-layout").style.display = "flex";
-        };
+        // Notify server of username
+        socket.emit("set username", username); 
 
         // Update online user list
         socket.on("user list", (users) => {
