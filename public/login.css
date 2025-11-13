@@ -1,68 +1,143 @@
-body{
+body {
     background-image: url("images/background website.jpg");
     background-repeat: no-repeat;
     background-size: cover;
     background-attachment: fixed;
+    margin: 0;
+    font-family: Arial, sans-serif;
 }
-.Logo{
-      width: 10vw;            
-    height: 10vw;            
-    max-width: 150px;       
+
+.Logo {
+    width: 10vw;
+    height: 10vw;
+    max-width: 150px;
     max-height: 150px;
     background-image: url("images/Purrlock.jpg");
     background-size: cover;
     background-position: center;
     border: 1px solid purple;
     border-radius: 8px;
-    
+    margin: 0 auto 20px auto;
 }
-.box{
-     width: 40%;
-     min-height: 200px;
-     height:auto;
+
+.box {
+    width: 40%;
+    min-width: 300px;
+    min-height: 200px;
     padding: 20px;
     margin: 50px auto;
-    background-color: white; 
-    border: 1px solid #ccc; 
+    background-color: white;
+    border: 1px solid #ccc;
     border-radius: 8px;
     display: flex;
     flex-direction: column;
-    align-items:center;
+    align-items: center;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
 }
-h1{
-    font-family:serif;
+
+h1 {
+    font-family: serif;
     color: white;
     text-align: center;
 }
-.box label{
+
+.box label {
     display: block;
     text-align: center;
     margin-bottom: 5px;
     color: purple;
-    padding:5px;
-
+    padding: 5px;
 }
-.box input{
-    width:100%;
+
+.box input {
+    width: 100%;
     padding: 10px;
     border: 2px solid purple;
+    border-radius: 4px;
+    margin-bottom: 10px;
 }
-.form-row{
-    display:flex;
-    align-items:center;
-    margin-bottom:15px;
+
+.form-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 15px;
     max-width: 70%;
+    flex-wrap: wrap;
+    gap: 10px;
 }
-.box button{
+
+.box button {
     background-color: purple;
-    color:white;
+    color: white;
+    border: none;
     border-radius: 5px;
     width: 40%;
-    font-size:20px;
-    margin: 0 auto;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 10px;
+    margin: 10px auto 0 auto;
     display: block;
-
+    transition: background-color 0.3s ease;
 }
-.box button:hover{
+
+.box button:hover {
     background-color: red;
+}
+
+#chat-layout {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+#user-list-panel {
+    width: 150px;
+    background: white;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    height: 600px;
+    overflow-y: auto;
+}
+
+#user-list-panel ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+#user-list-panel li {
+    padding: 6px;
+    margin-bottom: 4px;
+    background: #eee;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+#user-list-panel li:hover {
+    background: #ddd;
+}
+/* Chat messages text color with electric neon glow */
+#messages li {
+    color: #FF00FF; /* Electric pink */
+    font-weight: bold;
+    margin-bottom: 5px;
+    text-shadow: 
+        0 0 5px #FF00FF,
+        0 0 10px #FF00FF,
+        0 0 20px #FF00FF,
+        0 0 40px #FF69B4,
+        0 0 80px #FF69B4;
+}
+
+/* Optional: distinguish private messages */
+#messages li.private {
+    color: #FF69B4; /* Hot pink for private messages */
+    text-shadow: 
+        0 0 5px #FF69B4,
+        0 0 10px #FF69B4,
+        0 0 20px #FF69B4,
+        0 0 40px #FF1493,
+        0 0 80px #FF1493;
 }
