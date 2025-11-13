@@ -66,3 +66,34 @@ h1{
 .box button:hover{
     background-color: red;
 }
+#chat-layout {
+    display: flex;
+    gap: 20px;
+}
+
+#user-list-panel {
+    width: 150px;
+    background: white;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    height: 600px;
+    overflow-y: auto;
+}
+
+#user-list-panel ul {
+    list-style: none;
+    padding: 0;
+}
+
+#user-list-panel li {
+    padding: 6px;
+    margin-bottom: 4px;
+    background: #eee;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+#user-list-panel li:hover {
+    background: #ddd;
+}
