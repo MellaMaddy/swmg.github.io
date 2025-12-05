@@ -1,60 +1,37 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Shared-Key Encrypted Chat</title>
-<link rel="stylesheet" href="login.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
-<style>
-#chat-layout { display:flex; gap:1rem; padding:1rem; }
-#user-list-panel { width:180px; border-right:1px solid #ddd; }
-.chat-container { flex:1; }
-ul#messages { list-style:none; padding:0; max-height:400px; overflow-y:auto; }
-li.message { margin:8px 0; padding:6px; border-radius:6px; background:#f5f5f5; }
-li.message.private { background:#e8f7ff; }
-#user-list li { cursor:pointer; padding:4px; border-bottom:1px solid #eee; }
-#user-list li:hover { background:#f0f0f0; }
-</style>
-</head>
-<body>
-
-<div id="chat-layout">
-  <div id="user-list-panel">
-    <h3>Users</h3>
-    <ul id="user-list"></ul>
-  </div>
-  <div class="chat-container">
-    <h2>Encrypted Chat</h2>
-    <ul id="messages"></ul>
-    <form id="chat-form">
-      <input type="text" id="msg" placeholder="Type a message..." autocomplete="off" required>
-      <button type="submit">Send</button>
-    </form>
-  </div>
-</div>
-
 <script src="/socket.io/socket.io.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 <script>
 const messagesList = document.getElementById("messages");
 const userListEl = document.getElementById("user-list");
 const socket = io();
 
-// Store shared keys per user
+// Store computed keys for private chats
 const chatKeys = {};
+
+// Get current user's username from the server (via a small API call)
+let currentUser = "";
+fetch("/api/current-user")
+  .then(res => res.json())
+  .then(data => { currentUser = data.username; });
+
+// Utility: generate AES key from two usernames
+function generateKey(userA, userB) {
+  // Sort usernames to get the same result for both users
+  const sorted = [userA, userB].sort().join(":");
+  return CryptoJS.SHA256(sorted).toString(); // 256-bit key
+}
 
 // Update user list
 socket.on("user list", users => {
   userListEl.innerHTML = "";
   users.forEach(u => {
+    if(u === currentUser) return; // Skip yourself
     const li = document.createElement("li");
     li.textContent = u;
     li.onclick = () => {
-      // Ask for shared key if not known
-      if(!chatKeys[u]) {
-        const key = prompt(`Enter shared key for ${u}:`);
-        if(!key) return;
-        chatKeys[u] = key;
-      }
+      // Compute or retrieve key
+      if(!chatKeys[u]) chatKeys[u] = generateKey(currentUser, u);
+      
       const msg = prompt(`Send private message to ${u}:`);
       if(!msg) return;
 
@@ -67,13 +44,10 @@ socket.on("user list", users => {
 
 // RECEIVE PRIVATE MESSAGE
 socket.on("private message", ({ from, message }) => {
-  let key = chatKeys[from];
-  if(!key) {
-    key = prompt(`Enter shared key to decrypt message from ${from}:`);
-    if(!key) return;
-    chatKeys[from] = key;
+  if(!chatKeys[from]) {
+    chatKeys[from] = generateKey(currentUser, from);
   }
-  const decrypted = CryptoJS.AES.decrypt(message, key).toString(CryptoJS.enc.Utf8);
+  const decrypted = CryptoJS.AES.decrypt(message, chatKeys[from]).toString(CryptoJS.enc.Utf8);
   const li = document.createElement("li");
   li.className = "message private";
   li.innerHTML = `<strong>(Private) ${from}:</strong> ${decrypted}`;
@@ -81,7 +55,7 @@ socket.on("private message", ({ from, message }) => {
   messagesList.scrollTop = messagesList.scrollHeight;
 });
 
-// PUBLIC MESSAGE (can optionally be encrypted)
+// PUBLIC MESSAGE (plaintext)
 socket.on("chat message", msg => {
   const li = document.createElement("li");
   li.className = "message";
@@ -95,12 +69,8 @@ document.getElementById("chat-form").onsubmit = e => {
   e.preventDefault();
   const text = document.getElementById("msg").value.trim();
   if(!text) return;
-  // For public messages, sending plaintext. To encrypt, use a default key
   socket.emit("chat message", { text });
   document.getElementById("msg").value = "";
 };
 </script>
-
-</body>
-</html>
 
