@@ -1,148 +1,92 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Encrypted Chat App</title>
-<link rel="stylesheet" href="login.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
-<style>
-#chat-layout { display:flex; gap:1rem; padding:1rem; height:90vh; }
-#user-list-panel { width:180px; border-right:1px solid #ddd; overflow-y:auto; }
-.chat-container { flex:1; display:flex; flex-direction:column; }
-ul#messages { list-style:none; padding:0; flex:1; overflow-y:auto; margin-bottom:10px; }
-li.message { margin:8px 0; padding:6px; border-radius:6px; background:#f5f5f5; }
-li.message.private { background:#e8f7ff; }
-#user-list li { cursor:pointer; padding:4px; border-bottom:1px solid #eee; }
-#user-list li:hover { background:#f0f0f0; }
-#chat-form { display:flex; gap:4px; }
-#chat-form input { flex:1; padding:6px; }
-#return-public { margin-bottom:8px; display:none; cursor:pointer; color:blue; text-decoration:underline; }
-</style>
+    <meta charset="UTF-8">
+    <title>PURRLOCK</title>
+    <style>
+        body { font-family: Arial; margin: 0; padding: 0; }
+        #container { display: flex; height: 100vh; }
+        #users { width: 200px; background: #eee; padding: 10px; }
+        #chat { flex: 1; display: flex; flex-direction: column; }
+        #messages { flex: 1; overflow-y: auto; padding: 10px; border-bottom: 1px solid #ccc; }
+        #input-area { display: flex; }
+        #input-area input { flex: 1; padding: 10px; }
+        #input-area button { padding: 10px; }
+    </style>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 </head>
 <body>
 
-<div id="chat-layout">
-  <div id="user-list-panel">
-    <h3>Users</h3>
-    <ul id="user-list"></ul>
-  </div>
+<div id="container">
+    <div id="users">
+        <h3>Users</h3>
+        <ul id="userList"></ul>
+        <button onclick="goToMainChat()">Main Chat</button>
+        <button onclick="enterPrivateChat()">Private Chat</button>
+    </div>
 
-  <div class="chat-container">
-    <h2 id="chat-title">Public Chat</h2>
-    <div id="return-public">Return to Public Chat</div>
-    <ul id="messages"></ul>
-    <form id="chat-form">
-      <input type="text" id="msg" placeholder="Type a message..." autocomplete="off" required>
-      <button type="submit">Send</button>
-    </form>
-  </div>
+    <div id="chat">
+        <div id="messages"></div>
+        <div id="input-area">
+            <input id="msg" placeholder="Message..." />
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
 </div>
 
-<script src="/socket.io/socket.io.js"></script>
 <script>
-const messagesList = document.getElementById("messages");
-const userListEl = document.getElementById("user-list");
-const chatTitle = document.getElementById("chat-title");
-const chatForm = document.getElementById("chat-form");
-const msgInput = document.getElementById("msg");
-const returnBtn = document.getElementById("return-public");
-
 const socket = io();
+let username = prompt("Enter username:");
+let encryptionKey = null;
+let privateMode = false;
 
-let currentUser = "";
-let activeChat = null; // null = public, else username
-let chatKey = "";      // AES key for current private chat
+socket.emit("join", username);
 
-// Fetch current user
-fetch("/api/current-user").then(res => res.json()).then(data => { currentUser = data.username; });
-
-// USER LIST
-socket.on("user list", users => {
-  userListEl.innerHTML = "";
-  users.forEach(u => {
-    if(u === currentUser) return;
-    const li = document.createElement("li");
-    li.textContent = u;
-    li.onclick = () => {
-      // Prompt for encryption key
-      const key = prompt(`Enter shared key for private chat with ${u}:`);
-      if(!key) return;
-
-      activeChat = u;
-      chatKey = key;
-      chatTitle.textContent = `Private Chat with ${u}`;
-      messagesList.innerHTML = ""; // optional: clear previous messages
-      returnBtn.style.display = "block";
-    };
-    userListEl.appendChild(li);
-  });
+socket.on("userList", users => {
+    document.getElementById("userList").innerHTML = users.map(u => `<li>${u}</li>`).join("");
 });
 
-// RETURN TO PUBLIC CHAT
-returnBtn.onclick = () => {
-  activeChat = null;
-  chatKey = "";
-  chatTitle.textContent = "Public Chat";
-  messagesList.innerHTML = "";
-  returnBtn.style.display = "none";
-};
+function encrypt(text, key) {
+    return btoa(text.split('').map((c,i)=>String.fromCharCode(c.charCodeAt(0) ^ key.charCodeAt(i % key.length))).join(''));
+}
+function decrypt(text, key) {
+    return atob(text).split('').map((c,i)=>String.fromCharCode(c.charCodeAt(0) ^ key.charCodeAt(i % key.length))).join('');
+}
 
-// RECEIVE PRIVATE MESSAGE
-socket.on("private message", ({ from, message }) => {
-  if(!activeChat) return; // ignore private messages if not in private chat with that user
-  if(activeChat !== from) return;
+function sendMessage() {
+    let msg = document.getElementById("msg").value;
+    if (!msg) return;
 
-  try {
-    const decrypted = CryptoJS.AES.decrypt(message, chatKey).toString(CryptoJS.enc.Utf8);
-    const li = document.createElement("li");
-    li.className = "message private";
-    li.innerHTML = `<strong>(Private) ${from}:</strong> ${decrypted}`;
-    messagesList.appendChild(li);
-    messagesList.scrollTop = messagesList.scrollHeight;
-  } catch(e) {
-    console.warn("Failed to decrypt message with current key.");
-  }
+    if (privateMode && encryptionKey) {
+        msg = encrypt(msg, encryptionKey);
+    }
+
+    socket.emit("chatMessage", { msg, private: privateMode });
+    document.getElementById("msg").value = "";
+}
+
+socket.on("message", data => {
+    let { user, msg, private } = data;
+
+    if (private) {
+        if (!encryptionKey) return;
+        msg = decrypt(msg, encryptionKey);
+    }
+
+    const div = document.getElementById("messages");
+    div.innerHTML += `<p><strong>${user}:</strong> ${msg}</p>`;
+    div.scrollTop = div.scrollHeight;
 });
 
-// RECEIVE PUBLIC MESSAGE
-socket.on("chat message", msg => {
-  if(activeChat === null) {
-    const li = document.createElement("li");
-    li.className = "message";
-    li.innerHTML = `<strong>${msg.user}:</strong> ${msg.text}`;
-    messagesList.appendChild(li);
-    messagesList.scrollTop = messagesList.scrollHeight;
-  }
-});
+function enterPrivateChat() {
+    encryptionKey = prompt("Enter encryption key:");
+    privateMode = true;
+}
 
-// SEND MESSAGE
-chatForm.onsubmit = e => {
-  e.preventDefault();
-  const text = msgInput.value.trim();
-  if(!text) return;
-
-  if(activeChat && chatKey) {
-    // Encrypt private message
-    const encrypted = CryptoJS.AES.encrypt(text, chatKey).toString();
-    socket.emit("private message", { to: activeChat, message: encrypted });
-
-    const li = document.createElement("li");
-    li.className = "message private";
-    li.innerHTML = `<strong>(Private) You → ${activeChat}:</strong> ${text}`;
-    messagesList.appendChild(li);
-  } else {
-    // Public message
-    socket.emit("chat message", { text });
-    const li = document.createElement("li");
-    li.className = "message";
-    li.innerHTML = `<strong>You:</strong> ${text}`;
-    messagesList.appendChild(li);
-  }
-
-  messagesList.scrollTop = messagesList.scrollHeight;
-  msgInput.value = "";
-};
+function goToMainChat() {
+    privateMode = false;
+    encryptionKey = null;
+}
 </script>
 </body>
 </html>
-
