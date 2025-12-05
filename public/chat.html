@@ -31,16 +31,20 @@
 
     <!-- Socket.IO & Chat Logic -->
     <script src="/socket.io/socket.io.js"></script>
+
     <script>
+        // 🔥 Username retrieved directly from your backend (REPLACE THIS with your server-side template variable)
+        const username = "{{USERNAME}}"; 
+        // Examples:
+        // PHP: const username = "<?= $_SESSION['username'] ?>";
+        // EJS: const username = "<%= username %>";
+        // Flask: const username = "{{ username }}";
+
         const socket = io();
-
-        // Automatically assign a random username
-        const username = "User" + Math.floor(Math.random() * 1000);
-
         const messagesList = document.getElementById("messages");
 
         // Notify server of username
-        socket.emit("set username", username); 
+        socket.emit("set username", username);
 
         // Update online user list
         socket.on("user list", (users) => {
@@ -57,7 +61,7 @@
             });
         });
 
-        // Private message function
+        // Private messaging
         function openPrivateMessage(targetUser) {
             const message = prompt(`Send private message to ${targetUser}:`);
             if (!message) return;
@@ -69,7 +73,6 @@
             });
         }
 
-        // Receive private message
         socket.on("private message", ({ from, message }) => {
             const li = document.createElement("li");
             li.className = "message private";
