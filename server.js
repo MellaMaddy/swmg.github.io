@@ -98,26 +98,22 @@ app.get("/api/current-user", authMiddleware, (req, res) => {
 const users = {}; // socket.id -> username
 
 io.on("connection", (socket) => {
-  const req = socket.request;
-
-  // User sets username
-  socket.on("set username", (uname) => {
+  // Receive username from client
+  socket.on("set username", uname => {
     users[socket.id] = uname;
     io.emit("user list", Object.values(users));
     console.log("User connected:", uname);
   });
 
   // Public message
-  socket.on("chat message", (msg) => {
-    io.emit("chat message", msg);
-  });
+  socket.on("chat message", msg => io.emit("chat message", msg));
 
   // Private message
   socket.on("private message", ({ to, message, from }) => {
     const targetId = Object.keys(users).find(id => users[id] === to);
     if (targetId) {
       io.to(targetId).emit("private message", { from, message });
-      socket.emit("private message", { from, message }); // show to sender
+      socket.emit("private message", { from, message }); // sender sees their own message
     }
   });
 
