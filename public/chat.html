@@ -1,105 +1,211 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Chat Room</title>
-    <link rel="stylesheet" href="login.css">
+  <meta charset="UTF-8">
+  <title>Encrypted Chat Room</title>
+  <link rel="stylesheet" href="login.css">
+  <style>
+    #chat-layout { display: flex; gap: 1rem; padding: 1rem; }
+    #user-list-panel { width: 180px; border-right: 1px solid #ddd; }
+    .chat-container { flex: 1; }
+    ul#messages { list-style: none; padding: 0; max-height: 400px; overflow: auto; }
+    li.message { margin: 8px 0; padding: 6px; border-radius: 6px; background: #f5f5f5; }
+    li.message.private { background: #e8f7ff; }
+  </style>
 </head>
 <body>
 
-    <!-- Chat Layout With User List + Chat Window -->
-    <div id="chat-layout" style="display:flex;">
+<div id="chat-layout">
+  <div id="user-list-panel">
+    <h3>Users</h3>
+    <ul id="user-list"></ul>
+    <button id="generate-key-btn">Generate & Share Key</button>
+    <p>Key: <span id="key-flag">unknown</span></p>
+  </div>
 
-        <!-- Online User List -->
-        <div id="user-list-panel">
-            <h3>Users</h3>
-            <ul id="user-list"></ul>
-        </div>
+  <div class="chat-container">
+    <h2>Chat Room</h2>
+    <ul id="messages"></ul>
+    <form id="chat-form">
+      <input type="text" id="msg" placeholder="Type your message..." autocomplete="off" required>
+      <button type="submit">Send</button>
+    </form>
+  </div>
+</div>
 
-        <!-- Main Chat Container -->
-        <div class="chat-container">
-            <h2>Chat Room</h2>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const messagesList = document.getElementById("messages");
+  const keyFlag = document.getElementById("key-flag");
+  const generateKeyBtn = document.getElementById("generate-key-btn");
+  let username = "";
+  let sharedAesKey = null;
 
-            <ul id="messages"></ul>
+  const socket = io();
 
-            <form id="chat-form">
-                <input type="text" id="msg" placeholder="Type your message..." autocomplete="off" required>
-                <button type="submit">Send</button>
-            </form>
-        </div>
-    </div>
+  // -----------------------------
+  // HELPERS: Base64 <-> ArrayBuffer
+  // -----------------------------
+  function arrayBufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
+  }
 
-    <!-- Socket.IO & Chat Logic -->
-    <script src="/socket.io/socket.io.js"></script>
+  function base64ToArrayBuffer(b64) {
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes.buffer;
+  }
 
-    <script>
-        // 🔥 Username retrieved directly from your backend (REPLACE THIS with your server-side template variable)
-        const username = "{{USERNAME}}"; 
-        // Examples:
-        // PHP: const username = "<?= $_SESSION['username'] ?>";
-        // EJS: const username = "<%= username %>";
-        // Flask: const username = "{{ username }}";
+  async function generateAesKey() {
+    return await crypto.subtle.generateKey(
+      { name: "AES-GCM", length: 256 },
+      true,
+      ["encrypt", "decrypt"]
+    );
+  }
 
-        const socket = io();
-        const messagesList = document.getElementById("messages");
+  async function exportKeyToBase64(key) {
+    const raw = await crypto.subtle.exportKey('raw', key);
+    return arrayBufferToBase64(raw);
+  }
 
-        // Notify server of username
-        socket.emit("set username", username);
+  async function importKeyFromBase64(b64) {
+    const raw = base64ToArrayBuffer(b64);
+    return await crypto.subtle.importKey('raw', raw, 'AES-GCM', true, ['encrypt','decrypt']);
+  }
 
-        // Update online user list
-        socket.on("user list", (users) => {
-            const list = document.getElementById("user-list");
-            list.innerHTML = "";
+  async function encryptWithKey(key, plaintext) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encoded = new TextEncoder().encode(plaintext);
+    const ciphertext = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, encoded);
+    return { iv: arrayBufferToBase64(iv.buffer), ciphertext: arrayBufferToBase64(ciphertext) };
+  }
 
-            users.forEach(user => {
-                if (user !== username) {
-                    const li = document.createElement("li");
-                    li.textContent = user;
-                    li.onclick = () => openPrivateMessage(user);
-                    list.appendChild(li);
-                }
-            });
-        });
+  async function decryptWithKey(key, payload) {
+    try {
+      const iv = new Uint8Array(base64ToArrayBuffer(payload.iv));
+      const ct = base64ToArrayBuffer(payload.ciphertext);
+      const decrypted = await crypto.subtle.decrypt({name:"AES-GCM", iv}, key, ct);
+      return new TextDecoder().decode(decrypted);
+    } catch (e) {
+      return null;
+    }
+  }
 
-        // Private messaging
-        function openPrivateMessage(targetUser) {
-            const message = prompt(`Send private message to ${targetUser}:`);
-            if (!message) return;
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+  }
 
-            socket.emit("private message", {
-                to: targetUser,
-                message,
-                from: username
-            });
-        }
+  // -----------------------------
+  // GET LOGGED-IN USERNAME
+  // -----------------------------
+  fetch("/api/current-user")
+    .then(res => res.json())
+    .then(data => {
+      username = data.username;
+      socket.emit("set username");
+    });
 
-        socket.on("private message", ({ from, message }) => {
-            const li = document.createElement("li");
-            li.className = "message private";
-            li.innerHTML = `<strong>(Private) ${from}:</strong> ${message}`;
-            messagesList.appendChild(li);
-        });
+  // -----------------------------
+  // SOCKET EVENTS
+  // -----------------------------
+  socket.on("user list", users => {
+    const list = document.getElementById("user-list");
+    list.innerHTML = "";
+    users.forEach(user => {
+      if (user !== username) {
+        const li = document.createElement("li");
+        li.textContent = user;
+        li.onclick = () => openPrivateMessage(user);
+        list.appendChild(li);
+      }
+    });
+  });
 
-        // Send public message
-        document.getElementById("chat-form").onsubmit = (e) => {
-            e.preventDefault();
-            const input = document.getElementById("msg");
-            const text = input.value.trim();
-            if (!text) return;
+  socket.on("shared-key", async ({ key }) => {
+    sharedAesKey = await importKeyFromBase64(key);
+    keyFlag.textContent = "available";
+  });
 
-            socket.emit("chat message", { user: username, text });
-            input.value = "";
-        };
+  socket.on("no-shared-key", () => {
+    keyFlag.textContent = "none (generate one)";
+  });
 
-        // Display public message
-        socket.on("chat message", (msg) => {
-            const li = document.createElement("li");
-            li.className = "message";
-            li.innerHTML = `<strong>${msg.user}:</strong> ${msg.text}`;
-            messagesList.appendChild(li);
-            messagesList.scrollTop = messagesList.scrollHeight;
-        });
-    </script>
+  socket.on("chat message", async msg => {
+    const li = document.createElement("li");
+    li.className = "message";
+    if (!sharedAesKey) li.textContent = `${msg.user}: (cannot decrypt message)`;
+    else {
+      const decrypted = await decryptWithKey(sharedAesKey, msg.data);
+      li.innerHTML = decrypted === null
+        ? `${msg.user}: (failed to decrypt)`
+        : `<strong>${escapeHtml(msg.user)}:</strong> ${escapeHtml(decrypted)}`;
+    }
+    messagesList.appendChild(li);
+    messagesList.scrollTop = messagesList.scrollHeight;
+  });
+
+  socket.on("private message", async ({ from, payload }) => {
+    const li = document.createElement("li");
+    li.className = "message private";
+    if (!sharedAesKey) li.textContent = `(Private from ${from}): cannot decrypt`;
+    else {
+      const decrypted = await decryptWithKey(sharedAesKey, payload);
+      li.innerHTML = decrypted === null
+        ? `(Private from ${from}): failed to decrypt`
+        : `<strong>(Private) ${escapeHtml(from)}:</strong> ${escapeHtml(decrypted)}`;
+    }
+    messagesList.appendChild(li);
+    messagesList.scrollTop = messagesList.scrollHeight;
+  });
+
+  // -----------------------------
+  // SEND PUBLIC MESSAGE
+  // -----------------------------
+  document.getElementById("chat-form").onsubmit = async e => {
+    e.preventDefault();
+    const input = document.getElementById("msg");
+    const text = input.value.trim();
+    if (!text || !sharedAesKey) return alert("No shared key available");
+
+    const payload = await encryptWithKey(sharedAesKey, text);
+    socket.emit("chat message", { user: username, data: payload });
+    input.value = "";
+  };
+
+  // -----------------------------
+  // PRIVATE MESSAGE
+  // -----------------------------
+  function openPrivateMessage(targetUser) {
+    const message = prompt(`Send private message to ${targetUser}:`);
+    if (!message || !sharedAesKey) return;
+
+    encryptWithKey(sharedAesKey, message).then(payload => {
+      socket.emit("private message", { to: targetUser, payload });
+      const li = document.createElement("li");
+      li.className = "message private";
+      li.innerHTML = `<strong>(Private to ${escapeHtml(targetUser)}):</strong> ${escapeHtml(message)}`;
+      messagesList.appendChild(li);
+    });
+  }
+
+  // -----------------------------
+  // GENERATE & SHARE AES KEY
+  // -----------------------------
+  generateKeyBtn.onclick = async () => {
+    const key = await generateAesKey();
+    const exported = await exportKeyToBase64(key);
+    sharedAesKey = key;
+    keyFlag.textContent = "available (you generated)";
+    socket.emit("share-key", { key: exported });
+    alert("Shared AES key generated & sent to server.");
+  };
+</script>
 
 </body>
 </html>
+
