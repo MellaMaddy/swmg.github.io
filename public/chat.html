@@ -5,7 +5,6 @@
     <title>PURRLOCK Chat</title>
     <link rel="stylesheet" href="login.css">
     <style>
-        /* Basic layout in case login.css doesn't style everything */
         body { font-family: Arial; margin: 0; padding: 0; }
         #container { display: flex; height: 100vh; }
         #users { width: 200px; background: #eee; padding: 10px; overflow-y: auto; }
@@ -21,52 +20,84 @@
 <body>
 
 <div id="container">
-    <!-- Online Users -->
     <div id="users">
         <h3>Online Users</h3>
         <ul id="userList"></ul>
     </div>
 
-    <!-- Chat Messages -->
     <div id="chat">
         <div id="messages"></div>
         <div id="input-area">
             <input id="msg" placeholder="Type a message..." />
-            <button onclick="sendMessage()">Send</button>
+            <button id="sendBtn">Send</button>
         </div>
     </div>
 </div>
 
 <script>
-const socket = io();
+let socket;
 let username = null;
 let encryptionKey = null;
 let privateMode = false;
 
-// Fetch the logged-in username from the server session
+// Fetch username from server session
 fetch("/api/current-user")
   .then(res => res.json())
   .then(data => {
-      username = data.username;
-      if (!username) username = "Anonymous";
-      socket.emit("join", username);
+      username = data.username || "Anonymous";
+      // Initialize socket after username is known
+      socket = io({
+          query: { username }
+      });
+
+      // Emit join after socket is connected
+      socket.on("connect", () => {
+          socket.emit("join", username);
+      });
+
+      setupSocketHandlers();
   });
 
-// Update online users list
-socket.on("userList", users => {
-    const userListEl = document.getElementById("userList");
-    userListEl.innerHTML = "";
-    users.forEach(u => {
-        if (u !== username) {
-            const li = document.createElement("li");
-            li.textContent = u;
-            li.onclick = () => openPrivateMessage(u); // Clicking name triggers private chat
-            userListEl.appendChild(li);
-        }
+// Setup all socket event handlers
+function setupSocketHandlers() {
+    // Update online users list
+    socket.on("userList", users => {
+        const userListEl = document.getElementById("userList");
+        userListEl.innerHTML = "";
+        users.forEach(u => {
+            if (u !== username) {
+                const li = document.createElement("li");
+                li.textContent = u;
+                li.onclick = () => openPrivateMessage(u);
+                userListEl.appendChild(li);
+            }
+        });
     });
-});
 
-// Encrypt/decrypt functions for private messages
+    // Receive messages
+    socket.on("message", data => {
+        const { user, msg, private } = data;
+        const messagesEl = document.getElementById("messages");
+        let displayMsg = msg;
+
+        if (private) {
+            if (!encryptionKey) {
+                messagesEl.innerHTML += `<p class="private"><strong>${user} (Private):</strong> 🔒 Encrypted message received — click username to set key.</p>`;
+            } else {
+                displayMsg = decrypt(msg, encryptionKey);
+                messagesEl.innerHTML += `<p class="private"><strong>${user} (Private):</strong> ${displayMsg}</p>`;
+            }
+        } else {
+            messagesEl.innerHTML += `<p><strong>${user}:</strong> ${displayMsg}</p>`;
+        }
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+    });
+
+    // Send message button
+    document.getElementById("sendBtn").onclick = sendMessage;
+}
+
+// Encrypt/decrypt for private messages
 function encrypt(text, key) {
     return btoa(text.split('').map((c,i)=>String.fromCharCode(c.charCodeAt(0)^key.charCodeAt(i%key.length))).join(''));
 }
@@ -86,26 +117,7 @@ function sendMessage() {
     input.value = "";
 }
 
-// Display messages
-socket.on("message", data => {
-    const { user, msg, private } = data;
-    const messagesEl = document.getElementById("messages");
-    let displayMsg = msg;
-
-    if (private) {
-        if (!encryptionKey) {
-            messagesEl.innerHTML += `<p class="private"><strong>${user} (Private):</strong> 🔒 Encrypted message received — click username to set key.</p>`;
-        } else {
-            displayMsg = decrypt(msg, encryptionKey);
-            messagesEl.innerHTML += `<p class="private"><strong>${user} (Private):</strong> ${displayMsg}</p>`;
-        }
-    } else {
-        messagesEl.innerHTML += `<p><strong>${user}:</strong> ${displayMsg}</p>`;
-    }
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-});
-
-// Trigger private chat by clicking a username
+// Send private message by clicking username
 function openPrivateMessage(targetUser) {
     privateMode = true;
     encryptionKey = prompt(`Enter encryption key for private message to ${targetUser}:`);
@@ -115,7 +127,7 @@ function openPrivateMessage(targetUser) {
     socket.emit("privateMessage", { to: targetUser, msg: encryptedMsg });
 }
 
-// Reset to main chat mode
+// Switch back to main chat
 function goToMainChat() {
     privateMode = false;
     encryptionKey = null;
