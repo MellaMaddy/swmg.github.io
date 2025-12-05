@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Encrypted Chat</title>
+    <title>PURRLOCK</title>
     <style>
         body { font-family: Arial; margin: 0; padding: 0; }
         #container { display: flex; height: 100vh; }
@@ -34,9 +34,18 @@
     </div>
 </div>
 
+<link rel="stylesheet" href="login.css">
 <script>
 const socket = io();
-let username = prompt("Enter username:");
+let username = null;
+
+// Get username from server session
+fetch("/api/current-user")
+  .then(res => res.json())
+  .then(data => {
+      username = data.username;
+      socket.emit("join", username);
+  });
 let encryptionKey = null;
 let privateMode = false;
 
@@ -98,4 +107,5 @@ function goToMainChat() {
 </script>
 </body>
 </html>
+
 
