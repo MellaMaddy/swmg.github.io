@@ -24,11 +24,9 @@ const sessionMiddleware = session({
   saveUninitialized: true,
 });
 app.use(sessionMiddleware);
-
-// Serve static files
 app.use(express.static(path.join(__dirname, "public")));
 
-// Share session with Socket.IO
+// Share sessions with Socket.IO
 io.use((socket, next) => sessionMiddleware(socket.request, {}, next));
 
 function authMiddleware(req, res, next) {
@@ -76,7 +74,7 @@ app.post("/register", async (req, res) => {
   }
 });
 
-// CURRENT USER
+// API: current user
 app.get("/api/current-user", authMiddleware, (req, res) => {
   res.json({ username: req.session.username });
 });
@@ -94,11 +92,10 @@ io.on("connection", (socket) => {
 
   // PUBLIC MESSAGE
   socket.on("chat message", (msg) => {
-    // msg.text can be plaintext or encrypted if you want
     io.emit("chat message", { user: username, text: msg.text });
   });
 
-  // PRIVATE MESSAGE (encrypted by client)
+  // PRIVATE MESSAGE (encrypted by clients)
   socket.on("private message", ({ to, message }) => {
     const targetId = Object.keys(users).find(id => users[id] === to);
     if (targetId) io.to(targetId).emit("private message", { from: username, message });
@@ -109,6 +106,10 @@ io.on("connection", (socket) => {
     io.emit("user list", Object.values(users));
   });
 });
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
