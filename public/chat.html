@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Chat Room</title>
+<title>Shared-Key Encrypted Chat</title>
 <link rel="stylesheet" href="login.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
 <style>
 #chat-layout { display:flex; gap:1rem; padding:1rem; }
 #user-list-panel { width:180px; border-right:1px solid #ddd; }
@@ -23,7 +24,7 @@ li.message.private { background:#e8f7ff; }
     <ul id="user-list"></ul>
   </div>
   <div class="chat-container">
-    <h2>Chat Room</h2>
+    <h2>Encrypted Chat</h2>
     <ul id="messages"></ul>
     <form id="chat-form">
       <input type="text" id="msg" placeholder="Type a message..." autocomplete="off" required>
@@ -36,9 +37,10 @@ li.message.private { background:#e8f7ff; }
 <script>
 const messagesList = document.getElementById("messages");
 const userListEl = document.getElementById("user-list");
-
-// Connect to socket
 const socket = io();
+
+// Store shared keys per user
+const chatKeys = {};
 
 // Update user list
 socket.on("user list", users => {
@@ -47,15 +49,39 @@ socket.on("user list", users => {
     const li = document.createElement("li");
     li.textContent = u;
     li.onclick = () => {
-      const msg = prompt("Send private message to " + u);
+      // Ask for shared key if not known
+      if(!chatKeys[u]) {
+        const key = prompt(`Enter shared key for ${u}:`);
+        if(!key) return;
+        chatKeys[u] = key;
+      }
+      const msg = prompt(`Send private message to ${u}:`);
       if(!msg) return;
-      socket.emit("private message", { to: u, message: msg });
+
+      const encrypted = CryptoJS.AES.encrypt(msg, chatKeys[u]).toString();
+      socket.emit("private message", { to: u, message: encrypted });
     };
     userListEl.appendChild(li);
   });
 });
 
-// Public messages
+// RECEIVE PRIVATE MESSAGE
+socket.on("private message", ({ from, message }) => {
+  let key = chatKeys[from];
+  if(!key) {
+    key = prompt(`Enter shared key to decrypt message from ${from}:`);
+    if(!key) return;
+    chatKeys[from] = key;
+  }
+  const decrypted = CryptoJS.AES.decrypt(message, key).toString(CryptoJS.enc.Utf8);
+  const li = document.createElement("li");
+  li.className = "message private";
+  li.innerHTML = `<strong>(Private) ${from}:</strong> ${decrypted}`;
+  messagesList.appendChild(li);
+  messagesList.scrollTop = messagesList.scrollHeight;
+});
+
+// PUBLIC MESSAGE (can optionally be encrypted)
 socket.on("chat message", msg => {
   const li = document.createElement("li");
   li.className = "message";
@@ -64,20 +90,12 @@ socket.on("chat message", msg => {
   messagesList.scrollTop = messagesList.scrollHeight;
 });
 
-// Private messages
-socket.on("private message", ({ from, message }) => {
-  const li = document.createElement("li");
-  li.className = "message private";
-  li.innerHTML = `<strong>(Private) ${from}:</strong> ${message}`;
-  messagesList.appendChild(li);
-  messagesList.scrollTop = messagesList.scrollHeight;
-});
-
-// Send public message
+// SEND PUBLIC MESSAGE
 document.getElementById("chat-form").onsubmit = e => {
   e.preventDefault();
   const text = document.getElementById("msg").value.trim();
   if(!text) return;
+  // For public messages, sending plaintext. To encrypt, use a default key
   socket.emit("chat message", { text });
   document.getElementById("msg").value = "";
 };
@@ -85,5 +103,4 @@ document.getElementById("chat-form").onsubmit = e => {
 
 </body>
 </html>
-
 
