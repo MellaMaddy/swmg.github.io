@@ -10,103 +10,177 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+// DATABASE ------------------------------------------
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
 });
 
-app.use(express.urlencoded({ extended: true }));
+// MIDDLEWARE -----------------------------------------
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static("public"));
 
 const sessionMiddleware = session({
-  secret: "yourSecretKey",
-  resave: false,
-  saveUninitialized: true,
+    secret: "yourSecretKey",
+    resave: false,
+    saveUninitialized: true,
 });
+
 app.use(sessionMiddleware);
-app.use(express.static(path.join(__dirname, "public")));
 
-// Share sessions with Socket.IO
-io.use((socket, next) => sessionMiddleware(socket.request, {}, next));
+// Share sessions with socket.io
+io.use((socket, next) => {
+    sessionMiddleware(socket.request, {}, next);
+});
 
-function authMiddleware(req, res, next) {
-  if (req.session.userId) next();
-  else res.redirect("/");
+// AUTH MIDDLEWARE
+function auth(req, res, next) {
+    if (req.session.userId) return next();
+    res.redirect("/login.html");
 }
 
-// ----------------- ROUTES -----------------
-app.get("/", (req, res) => res.sendFile(path.join(__dirname, "public", "login.html")));
-app.get("/chat.html", authMiddleware, (req, res) => res.sendFile(path.join(__dirname, "public", "chat.html")));
-
-// LOGIN
-app.post("/login", async (req, res) => {
-  const { username, password } = req.body;
-  try {
-    const result = await pool.query("SELECT * FROM users WHERE username=$1", [username]);
-    if (!result.rows.length) return res.send("User not found");
-    const user = result.rows[0];
-    if (password !== user.password) return res.send("Incorrect password");
-    req.session.userId = user.id;
-    req.session.username = user.username;
-    res.redirect("/chat.html");
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("Login error");
-  }
+// ROUTES ---------------------------------------------
+app.get("/", (req, res) => {
+    res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
 // REGISTER
 app.post("/register", async (req, res) => {
-  const { username, password } = req.body;
-  try {
-    const exists = await pool.query("SELECT * FROM users WHERE username=$1", [username]);
-    if (exists.rows.length) return res.send("Username taken");
-    const result = await pool.query(
-      "INSERT INTO users (username, password) VALUES ($1,$2) RETURNING id",
-      [username, password]
-    );
-    req.session.userId = result.rows[0].id;
-    req.session.username = username;
-    res.redirect("/chat.html");
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("Register error");
-  }
+    const username = req.body.username.trim();
+    const password = req.body.password.trim();
+
+    try {
+        const exists = await pool.query("SELECT id FROM users WHERE username=$1", [username]);
+
+        if (exists.rows.length > 0) {
+            return res.send("Username already taken");
+        }
+
+        const result = await pool.query(
+            "INSERT INTO users (username, password) VALUES ($1, $2) RETURNING id",
+            [username, password]
+        );
+
+        req.session.userId = result.rows[0].id;
+        req.session.username = username;
+
+        res.redirect("/chat.html");
+    } catch (e) {
+        console.error(e);
+        res.send("Registration error");
+    }
 });
 
-// API: current user
-app.get("/api/current-user", authMiddleware, (req, res) => {
-  res.json({ username: req.session.username });
+// LOGIN
+app.post("/login", async (req, res) => {
+    const username = req.body.username.trim();
+    const password = req.body.password.trim();
+
+    try {
+        const result = await pool.query("SELECT * FROM users WHERE username=$1", [username]);
+
+        if (result.rows.length === 0) return res.send("User not found");
+        if (result.rows[0].password !== password) return res.send("Incorrect password");
+
+        req.session.userId = result.rows[0].id;
+        req.session.username = username;
+
+        res.redirect("/chat.html");
+    } catch (e) {
+        console.error(e);
+        res.send("Login error");
+    }
 });
 
-// ----------------- SOCKET.IO -----------------
-const users = {};
+// CHAT PAGE
+app.get("/chat.html", auth, (req, res) => {
+    res.sendFile(path.join(__dirname, "public", "chat.html"));
+});
 
-io.on("connection", (socket) => {
-  const session = socket.request.session;
-  if (!session || !session.username) return socket.disconnect(true);
+// API: GET CURRENT USER
+app.get("/api/current-user", auth, (req, res) => {
+    res.json({
+        userId: req.session.userId,
+        username: req.session.username,
+    });
+});
 
-  const username = session.username;
-  users[socket.id] = username;
-  io.emit("user list", Object.values(users));
+// API: LOAD PRIVATE MESSAGES BETWEEN TWO USERS
+app.get("/api/private-history", auth, async (req, res) => {
+    const other = req.query.user;
+    const me = req.session.username;
 
-  // PUBLIC MESSAGE
-  socket.on("chat message", (msg) => {
-    io.emit("chat message", { user: username, text: msg.text });
-  });
+    try {
+        const result = await pool.query(
+            `SELECT sender, receiver, encrypted_message, sent_at 
+             FROM private_messages 
+             WHERE (sender=$1 AND receiver=$2) 
+                OR (sender=$2 AND receiver=$1) 
+             ORDER BY sent_at ASC`,
+            [me, other]
+        );
 
-  // PRIVATE MESSAGE (encrypted by clients)
-  socket.on("private message", ({ to, message }) => {
-    const targetId = Object.keys(users).find(id => users[id] === to);
-    if (targetId) io.to(targetId).emit("private message", { from: username, message });
-  });
+        res.json(result.rows);
+    } catch (e) {
+        console.error(e);
+        res.json([]);
+    }
+});
 
-  socket.on("disconnect", () => {
-    delete users[socket.id];
+// SOCKET.IO -------------------------------------------
+const users = {}; // socket.id → username
+
+io.on("connection", async (socket) => {
+    const username = socket.request.session.username;
+
+    if (!username) return socket.disconnect(true);
+
+    console.log("User connected:", username);
+
+    // Add user to active list
+    users[socket.id] = username;
     io.emit("user list", Object.values(users));
-  });
+
+    // PUBLIC MESSAGE
+    socket.on("chat message", ({ text }) => {
+        io.emit("chat message", { user: username, text });
+    });
+
+    // PRIVATE MESSAGE
+    socket.on("private message", async ({ to, message }) => {
+        // Save encrypted message in database
+        await pool.query(
+            "INSERT INTO private_messages (sender, receiver, encrypted_message) VALUES ($1, $2, $3)",
+            [username, to, message]
+        );
+
+        // Find receiver socket
+        const target = Object.keys(users).find(id => users[id] === to);
+
+        if (target) {
+            io.to(target).emit("private message", {
+                from: username,
+                message
+            });
+        }
+
+        // Echo back to sender so it appears in their history instantly
+        socket.emit("private message", {
+            from: username,
+            message
+        });
+    });
+
+    // DISCONNECT
+    socket.on("disconnect", () => {
+        delete users[socket.id];
+        io.emit("user list", Object.values(users));
+        console.log("User disconnected:", username);
+    });
 });
 
+// START SERVER -----------------------------------------
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`Server running on ${PORT}`));
 
