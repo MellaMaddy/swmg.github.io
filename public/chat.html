@@ -1,19 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Chat Room</title>
-  <link rel="stylesheet" href="login.css">
-  <style>
-    #chat-layout { display: flex; gap: 1rem; padding: 1rem; }
-    #user-list-panel { width: 180px; border-right: 1px solid #ddd; }
-    .chat-container { flex: 1; }
-    ul#messages { list-style: none; padding: 0; max-height: 400px; overflow-y: auto; }
-    li.message { margin: 8px 0; padding: 6px; border-radius: 6px; background: #f5f5f5; }
-    li.message.private { background: #e8f7ff; }
-    #user-list li { cursor: pointer; padding: 4px; border-bottom: 1px solid #eee; }
-    #user-list li:hover { background: #f0f0f0; }
-  </style>
+<meta charset="UTF-8">
+<title>Chat Room</title>
+<link rel="stylesheet" href="login.css">
+<style>
+#chat-layout { display:flex; gap:1rem; padding:1rem; }
+#user-list-panel { width:180px; border-right:1px solid #ddd; }
+.chat-container { flex:1; }
+ul#messages { list-style:none; padding:0; max-height:400px; overflow-y:auto; }
+li.message { margin:8px 0; padding:6px; border-radius:6px; background:#f5f5f5; }
+li.message.private { background:#e8f7ff; }
+#user-list li { cursor:pointer; padding:4px; border-bottom:1px solid #eee; }
+#user-list li:hover { background:#f0f0f0; }
+</style>
 </head>
 <body>
 
@@ -22,12 +22,11 @@
     <h3>Users</h3>
     <ul id="user-list"></ul>
   </div>
-
   <div class="chat-container">
     <h2>Chat Room</h2>
     <ul id="messages"></ul>
     <form id="chat-form">
-      <input type="text" id="msg" placeholder="Type your message..." autocomplete="off" required>
+      <input type="text" id="msg" placeholder="Type a message..." autocomplete="off" required>
       <button type="submit">Send</button>
     </form>
   </div>
@@ -35,16 +34,12 @@
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
+const socket = io();
 const messagesList = document.getElementById("messages");
 const userListEl = document.getElementById("user-list");
 let username = "";
-const socket = io();
 
-function escapeHtml(s) {
-  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
-}
-
-// Fetch logged-in username from server
+// Fetch username from server
 fetch("/api/current-user")
   .then(res => res.json())
   .then(data => {
@@ -52,73 +47,50 @@ fetch("/api/current-user")
     socket.emit("set username", username);
   });
 
-// -----------------------------
 // Update user list
-// -----------------------------
 socket.on("user list", users => {
   userListEl.innerHTML = "";
-  users.forEach(user => {
-    if (user !== username) {
+  users.forEach(u => {
+    if(u !== username){
       const li = document.createElement("li");
-      li.textContent = user;
-      li.onclick = () => openPrivateMessage(user);
+      li.textContent = u;
+      li.onclick = () => {
+        const msg = prompt("Send private message to " + u);
+        if(!msg) return;
+        socket.emit("private message", { to: u, message: msg, from: username });
+      };
       userListEl.appendChild(li);
     }
   });
 });
 
-// -----------------------------
-// Receive public message
-// -----------------------------
+// Public messages
 socket.on("chat message", msg => {
   const li = document.createElement("li");
   li.className = "message";
-  li.innerHTML = `<strong>${escapeHtml(msg.user)}:</strong> ${escapeHtml(msg.text)}`;
+  li.innerHTML = `<strong>${msg.user}:</strong> ${msg.text}`;
   messagesList.appendChild(li);
   messagesList.scrollTop = messagesList.scrollHeight;
 });
 
-// -----------------------------
-// Receive private message
-// -----------------------------
+// Private messages
 socket.on("private message", ({ from, message }) => {
   const li = document.createElement("li");
   li.className = "message private";
-  li.innerHTML = `<strong>(Private) ${escapeHtml(from)}:</strong> ${escapeHtml(message)}`;
+  li.innerHTML = `<strong>(Private) ${from}:</strong> ${message}`;
   messagesList.appendChild(li);
   messagesList.scrollTop = messagesList.scrollHeight;
 });
 
-// -----------------------------
 // Send public message
-// -----------------------------
 document.getElementById("chat-form").onsubmit = e => {
   e.preventDefault();
-  const input = document.getElementById("msg");
-  const text = input.value.trim();
-  if (!text) return;
-
+  const text = document.getElementById("msg").value.trim();
+  if(!text) return;
   socket.emit("chat message", { user: username, text });
-  input.value = "";
+  document.getElementById("msg").value = "";
 };
-
-// -----------------------------
-// Send private message
-// -----------------------------
-function openPrivateMessage(targetUser) {
-  const message = prompt(`Send private message to ${targetUser}:`);
-  if (!message) return;
-
-  socket.emit("private message", { to: targetUser, message, from: username });
-
-  const li = document.createElement("li");
-  li.className = "message private";
-  li.innerHTML = `<strong>(Private to ${escapeHtml(targetUser)}):</strong> ${escapeHtml(message)}`;
-  messagesList.appendChild(li);
-  messagesList.scrollTop = messagesList.scrollHeight;
-}
 </script>
-
 </body>
 </html>
 
