@@ -10,17 +10,13 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// -------------------
 // PostgreSQL connection
-// -------------------
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
 });
 
-// -------------------
 // Middleware
-// -------------------
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
@@ -144,4 +140,3 @@ io.on("connection", (socket) => {
 // -------------------
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
