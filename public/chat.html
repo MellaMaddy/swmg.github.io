@@ -1,9 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Chat Room</title>
+<link rel="stylesheet" href="login.css">
+<style>
+#chat-layout { display:flex; gap:1rem; padding:1rem; }
+#user-list-panel { width:180px; border-right:1px solid #ddd; }
+.chat-container { flex:1; }
+ul#messages { list-style:none; padding:0; max-height:400px; overflow-y:auto; }
+li.message { margin:8px 0; padding:6px; border-radius:6px; background:#f5f5f5; }
+li.message.private { background:#e8f7ff; }
+#user-list li { cursor:pointer; padding:4px; border-bottom:1px solid #eee; }
+#user-list li:hover { background:#f0f0f0; }
+</style>
+</head>
+<body>
+
+<div id="chat-layout">
+  <div id="user-list-panel">
+    <h3>Users</h3>
+    <ul id="user-list"></ul>
+  </div>
+  <div class="chat-container">
+    <h2>Chat Room</h2>
+    <ul id="messages"></ul>
+    <form id="chat-form">
+      <input type="text" id="msg" placeholder="Type a message..." autocomplete="off" required>
+      <button type="submit">Send</button>
+    </form>
+  </div>
+</div>
+
 <script src="/socket.io/socket.io.js"></script>
 <script>
 const messagesList = document.getElementById("messages");
 const userListEl = document.getElementById("user-list");
 
-// Connect immediately; username is handled server-side
+// Connect to socket
 const socket = io();
 
 // Update user list
@@ -21,7 +55,7 @@ socket.on("user list", users => {
   });
 });
 
-// Receive public messages
+// Public messages
 socket.on("chat message", msg => {
   const li = document.createElement("li");
   li.className = "message";
@@ -30,7 +64,7 @@ socket.on("chat message", msg => {
   messagesList.scrollTop = messagesList.scrollHeight;
 });
 
-// Receive private messages
+// Private messages
 socket.on("private message", ({ from, message }) => {
   const li = document.createElement("li");
   li.className = "message private";
@@ -44,9 +78,12 @@ document.getElementById("chat-form").onsubmit = e => {
   e.preventDefault();
   const text = document.getElementById("msg").value.trim();
   if(!text) return;
-  socket.emit("chat message", { user: "", text }); // server fills username
+  socket.emit("chat message", { text });
   document.getElementById("msg").value = "";
 };
 </script>
+
+</body>
+</html>
 
 
