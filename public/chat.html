@@ -114,11 +114,15 @@ function sendMessage() {
     let msg = input.value.trim();
     if (!msg) return;
 
-    if (privateMode && encryptionKey && privateTarget) {
+    if (privateMode) {
+        if (!encryptionKey) {
+            alert("You must enter a valid encryption key to send a private message.");
+            return;
+        }
         msg = encrypt(msg, encryptionKey);
         socket.emit("private message", { to: privateTarget, message: msg });
         addMessage(username, input.value, true);
-    } else if (!privateMode) {
+    } else {
         socket.emit("chat message", { text: msg });
     }
 
@@ -130,6 +134,12 @@ function startPrivateChat(targetUser) {
     privateMode = true;
     privateTarget = targetUser;
     encryptionKey = prompt(`Enter encryption key for private chat with ${targetUser}:`);
+    if (!encryptionKey) {
+        alert("Private chat canceled. Encryption key is required.");
+        privateMode = false;
+        privateTarget = null;
+        return;
+    }
 
     document.getElementById("privateUser").textContent = targetUser;
     document.getElementById("privateBanner").style.display = "block";
@@ -148,4 +158,3 @@ function exitPrivateChat() {
 
 </body>
 </html>
-
