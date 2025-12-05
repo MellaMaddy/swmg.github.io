@@ -15,7 +15,6 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
 });
 
-// Middleware
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
@@ -29,7 +28,7 @@ app.use(sessionMiddleware);
 // Serve static files
 app.use(express.static(path.join(__dirname, "public")));
 
-// Share session with socket.io
+// Share session with Socket.IO
 io.use((socket, next) => sessionMiddleware(socket.request, {}, next));
 
 function authMiddleware(req, res, next) {
@@ -37,11 +36,11 @@ function authMiddleware(req, res, next) {
   else res.redirect("/");
 }
 
-// Routes
+// ----------------- ROUTES -----------------
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "public", "login.html")));
 app.get("/chat.html", authMiddleware, (req, res) => res.sendFile(path.join(__dirname, "public", "chat.html")));
 
-// Login
+// LOGIN
 app.post("/login", async (req, res) => {
   const { username, password } = req.body;
   try {
@@ -54,11 +53,11 @@ app.post("/login", async (req, res) => {
     res.redirect("/chat.html");
   } catch (err) {
     console.error(err);
-    res.status(500).send("Error logging in");
+    res.status(500).send("Login error");
   }
 });
 
-// Register
+// REGISTER
 app.post("/register", async (req, res) => {
   const { username, password } = req.body;
   try {
@@ -73,34 +72,33 @@ app.post("/register", async (req, res) => {
     res.redirect("/chat.html");
   } catch (err) {
     console.error(err);
-    res.status(500).send("Error registering");
+    res.status(500).send("Register error");
   }
 });
 
-// Get current user
+// CURRENT USER
 app.get("/api/current-user", authMiddleware, (req, res) => {
   res.json({ username: req.session.username });
 });
 
-// -------------------
-// Socket.IO
-// -------------------
+// ----------------- SOCKET.IO -----------------
 const users = {};
 
 io.on("connection", (socket) => {
   const session = socket.request.session;
   if (!session || !session.username) return socket.disconnect(true);
-  const username = session.username;
 
+  const username = session.username;
   users[socket.id] = username;
   io.emit("user list", Object.values(users));
 
-  // Public messages
+  // PUBLIC MESSAGE
   socket.on("chat message", (msg) => {
+    // msg.text can be plaintext or encrypted if you want
     io.emit("chat message", { user: username, text: msg.text });
   });
 
-  // Private messages
+  // PRIVATE MESSAGE (encrypted by client)
   socket.on("private message", ({ to, message }) => {
     const targetId = Object.keys(users).find(id => users[id] === to);
     if (targetId) io.to(targetId).emit("private message", { from: username, message });
@@ -112,7 +110,6 @@ io.on("connection", (socket) => {
   });
 });
 
-// Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
