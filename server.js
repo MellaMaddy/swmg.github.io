@@ -15,6 +15,7 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
 });
 
+// Middleware
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
@@ -25,65 +26,78 @@ const sessionMiddleware = session({
 });
 app.use(sessionMiddleware);
 
-// Share session with Socket.IO
-io.use((socket, next) => sessionMiddleware(socket.request, {}, next));
-
+// Serve static files
 app.use(express.static(path.join(__dirname, "public")));
+
+// Share session with socket.io
+io.use((socket, next) => sessionMiddleware(socket.request, {}, next));
 
 function authMiddleware(req, res, next) {
   if (req.session.userId) next();
   else res.redirect("/");
 }
 
+// Routes
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "public", "login.html")));
 app.get("/chat.html", authMiddleware, (req, res) => res.sendFile(path.join(__dirname, "public", "chat.html")));
 
+// Login
 app.post("/login", async (req, res) => {
   const { username, password } = req.body;
-  const result = await pool.query("SELECT * FROM users WHERE username=$1", [username]);
-  if (!result.rows.length) return res.send("User not found");
-  const user = result.rows[0];
-  if (password !== user.password) return res.send("Incorrect password");
-  req.session.userId = user.id;
-  req.session.username = user.username;
-  res.redirect("/chat.html");
+  try {
+    const result = await pool.query("SELECT * FROM users WHERE username=$1", [username]);
+    if (!result.rows.length) return res.send("User not found");
+    const user = result.rows[0];
+    if (password !== user.password) return res.send("Incorrect password");
+    req.session.userId = user.id;
+    req.session.username = user.username;
+    res.redirect("/chat.html");
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Error logging in");
+  }
 });
 
+// Register
 app.post("/register", async (req, res) => {
   const { username, password } = req.body;
-  const exists = await pool.query("SELECT * FROM users WHERE username=$1", [username]);
-  if (exists.rows.length) return res.send("Username taken");
-  const result = await pool.query(
-    "INSERT INTO users (username, password) VALUES ($1,$2) RETURNING id",
-    [username, password]
-  );
-  req.session.userId = result.rows[0].id;
-  req.session.username = username;
-  res.redirect("/chat.html");
+  try {
+    const exists = await pool.query("SELECT * FROM users WHERE username=$1", [username]);
+    if (exists.rows.length) return res.send("Username taken");
+    const result = await pool.query(
+      "INSERT INTO users (username, password) VALUES ($1,$2) RETURNING id",
+      [username, password]
+    );
+    req.session.userId = result.rows[0].id;
+    req.session.username = username;
+    res.redirect("/chat.html");
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Error registering");
+  }
+});
+
+// Get current user
+app.get("/api/current-user", authMiddleware, (req, res) => {
+  res.json({ username: req.session.username });
 });
 
 // -------------------
-// SOCKET.IO
+// Socket.IO
 // -------------------
-const users = {}; // socket.id -> username
+const users = {};
 
 io.on("connection", (socket) => {
   const session = socket.request.session;
-
-  if (!session || !session.username) {
-    return socket.disconnect(true);
-  }
-
+  if (!session || !session.username) return socket.disconnect(true);
   const username = session.username;
-  users[socket.id] = username;
 
-  // Emit updated user list to all
+  users[socket.id] = username;
   io.emit("user list", Object.values(users));
-  console.log("User connected:", username);
 
   // Public messages
   socket.on("chat message", (msg) => {
-    io.emit("chat message", msg);
+    io.emit("chat message", { user: username, text: msg.text });
   });
 
   // Private messages
@@ -92,13 +106,13 @@ io.on("connection", (socket) => {
     if (targetId) io.to(targetId).emit("private message", { from: username, message });
   });
 
-  // Disconnect
   socket.on("disconnect", () => {
     delete users[socket.id];
     io.emit("user list", Object.values(users));
-    console.log("User disconnected:", username);
   });
 });
 
+// Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
