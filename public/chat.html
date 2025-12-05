@@ -34,68 +34,73 @@ li.message.private { background:#e8f7ff; }
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
-const socket = io();
 const messagesList = document.getElementById("messages");
 const userListEl = document.getElementById("user-list");
-let username = "";
 
-// Fetch current username from server
+// Step 1: fetch username first
 fetch("/api/current-user")
   .then(res => res.json())
   .then(data => {
-    username = data.username;
+    const username = data.username;
+
+    // Step 2: only now connect to socket.io
+    const socket = io();
+
+    // Step 3: emit username immediately
     socket.emit("set username", username);
+
+    // Update user list
+    socket.on("user list", users => {
+      userListEl.innerHTML = "";
+      users.forEach(u => {
+        if(u !== username){
+          const li = document.createElement("li");
+          li.textContent = u;
+          li.onclick = () => {
+            const msg = prompt("Send private message to " + u);
+            if(!msg) return;
+            socket.emit("private message", { to: u, message: msg, from: username });
+          };
+          userListEl.appendChild(li);
+        }
+      });
+    });
+
+    // Receive public messages
+    socket.on("chat message", msg => {
+      const li = document.createElement("li");
+      li.className = "message";
+      li.innerHTML = `<strong>${msg.user}:</strong> ${msg.text}`;
+      messagesList.appendChild(li);
+      messagesList.scrollTop = messagesList.scrollHeight;
+    });
+
+    // Receive private messages
+    socket.on("private message", ({ from, message }) => {
+      const li = document.createElement("li");
+      li.className = "message private";
+      li.innerHTML = `<strong>(Private) ${from}:</strong> ${message}`;
+      messagesList.appendChild(li);
+      messagesList.scrollTop = messagesList.scrollHeight;
+    });
+
+    // Send public messages
+    document.getElementById("chat-form").onsubmit = e => {
+      e.preventDefault();
+      const text = document.getElementById("msg").value.trim();
+      if(!text) return;
+      socket.emit("chat message", { user: username, text });
+      document.getElementById("msg").value = "";
+    };
+
   })
   .catch(err => {
     console.error("Failed to get username:", err);
     alert("Error: Could not fetch username. Try logging in again.");
   });
-
-// Update user list
-socket.on("user list", users => {
-  userListEl.innerHTML = "";
-  users.forEach(u => {
-    if(u !== username){
-      const li = document.createElement("li");
-      li.textContent = u;
-      li.onclick = () => {
-        const msg = prompt("Send private message to " + u);
-        if(!msg) return;
-        socket.emit("private message", { to: u, message: msg, from: username });
-      };
-      userListEl.appendChild(li);
-    }
-  });
-});
-
-// Receive public message
-socket.on("chat message", msg => {
-  const li = document.createElement("li");
-  li.className = "message";
-  li.innerHTML = `<strong>${msg.user}:</strong> ${msg.text}`;
-  messagesList.appendChild(li);
-  messagesList.scrollTop = messagesList.scrollHeight;
-});
-
-// Receive private message
-socket.on("private message", ({ from, message }) => {
-  const li = document.createElement("li");
-  li.className = "message private";
-  li.innerHTML = `<strong>(Private) ${from}:</strong> ${message}`;
-  messagesList.appendChild(li);
-  messagesList.scrollTop = messagesList.scrollHeight;
-});
-
-// Send public message
-document.getElementById("chat-form").onsubmit = e => {
-  e.preventDefault();
-  const text = document.getElementById("msg").value.trim();
-  if(!text) return;
-  socket.emit("chat message", { user: username, text });
-  document.getElementById("msg").value = "";
-};
 </script>
 
 </body>
 </html>
+
 
