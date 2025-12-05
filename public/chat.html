@@ -11,6 +11,8 @@
     ul#messages { list-style: none; padding: 0; max-height: 400px; overflow: auto; }
     li.message { margin: 8px 0; padding: 6px; border-radius: 6px; background: #f5f5f5; }
     li.message.private { background: #e8f7ff; }
+    #user-list li { cursor: pointer; padding: 4px; border-bottom: 1px solid #eee; }
+    #user-list li:hover { background: #f0f0f0; }
   </style>
 </head>
 <body>
@@ -34,6 +36,7 @@
 <script src="/socket.io/socket.io.js"></script>
 <script>
   const messagesList = document.getElementById("messages");
+  const userListEl = document.getElementById("user-list");
   let username = "";
   const socket = io();
 
@@ -42,27 +45,26 @@
   }
 
   // -----------------------------
-  // GET LOGGED-IN USERNAME
+  // FETCH LOGGED-IN USERNAME
   // -----------------------------
   fetch("/api/current-user")
     .then(res => res.json())
     .then(data => {
       username = data.username;
-      socket.emit("set username");
+      socket.emit("set username", username);
     });
 
   // -----------------------------
   // UPDATE USER LIST
   // -----------------------------
   socket.on("user list", users => {
-    const list = document.getElementById("user-list");
-    list.innerHTML = "";
+    userListEl.innerHTML = "";
     users.forEach(user => {
       if (user !== username) {
         const li = document.createElement("li");
         li.textContent = user;
         li.onclick = () => openPrivateMessage(user);
-        list.appendChild(li);
+        userListEl.appendChild(li);
       }
     });
   });
@@ -111,7 +113,6 @@
 
     socket.emit("private message", { to: targetUser, message, from: username });
 
-    // Show message in sender's chat window
     const li = document.createElement("li");
     li.className = "message private";
     li.innerHTML = `<strong>(Private to ${escapeHtml(targetUser)}):</strong> ${escapeHtml(message)}`;
@@ -122,4 +123,3 @@
 
 </body>
 </html>
-
