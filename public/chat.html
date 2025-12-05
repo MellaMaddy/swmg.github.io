@@ -16,6 +16,7 @@ li.message.private { background:#e8f7ff; }
 #user-list li:hover { background:#f0f0f0; }
 #chat-form { display:flex; gap:4px; }
 #chat-form input { flex:1; padding:6px; }
+#return-public { margin-bottom:8px; display:none; cursor:pointer; color:blue; text-decoration:underline; }
 </style>
 </head>
 <body>
@@ -28,6 +29,7 @@ li.message.private { background:#e8f7ff; }
 
   <div class="chat-container">
     <h2 id="chat-title">Public Chat</h2>
+    <div id="return-public">Return to Public Chat</div>
     <ul id="messages"></ul>
     <form id="chat-form">
       <input type="text" id="msg" placeholder="Type a message..." autocomplete="off" required>
@@ -43,20 +45,16 @@ const userListEl = document.getElementById("user-list");
 const chatTitle = document.getElementById("chat-title");
 const chatForm = document.getElementById("chat-form");
 const msgInput = document.getElementById("msg");
+const returnBtn = document.getElementById("return-public");
+
 const socket = io();
 
 let currentUser = "";
 let activeChat = null; // null = public, else username
-const chatKeys = {};
+let chatKey = "";      // AES key for current private chat
 
 // Fetch current user
 fetch("/api/current-user").then(res => res.json()).then(data => { currentUser = data.username; });
-
-// Generate deterministic key for private chat
-function generateKey(userA, userB) {
-  const sorted = [userA, userB].sort().join(":");
-  return CryptoJS.SHA256(sorted).toString();
-}
 
 // USER LIST
 socket.on("user list", users => {
@@ -66,29 +64,49 @@ socket.on("user list", users => {
     const li = document.createElement("li");
     li.textContent = u;
     li.onclick = () => {
+      // Prompt for encryption key
+      const key = prompt(`Enter shared key for private chat with ${u}:`);
+      if(!key) return;
+
       activeChat = u;
+      chatKey = key;
       chatTitle.textContent = `Private Chat with ${u}`;
-      if(!chatKeys[u]) chatKeys[u] = generateKey(currentUser, u);
-      messagesList.innerHTML = ""; // optional: clear messages for this chat
+      messagesList.innerHTML = ""; // optional: clear previous messages
+      returnBtn.style.display = "block";
     };
     userListEl.appendChild(li);
   });
 });
 
+// RETURN TO PUBLIC CHAT
+returnBtn.onclick = () => {
+  activeChat = null;
+  chatKey = "";
+  chatTitle.textContent = "Public Chat";
+  messagesList.innerHTML = "";
+  returnBtn.style.display = "none";
+};
+
 // RECEIVE PRIVATE MESSAGE
 socket.on("private message", ({ from, message }) => {
-  if(!chatKeys[from]) chatKeys[from] = generateKey(currentUser, from);
-  const decrypted = CryptoJS.AES.decrypt(message, chatKeys[from]).toString(CryptoJS.enc.Utf8);
-  const li = document.createElement("li");
-  li.className = "message private";
-  li.innerHTML = `<strong>(Private) ${from}:</strong> ${decrypted}`;
-  messagesList.appendChild(li);
-  messagesList.scrollTop = messagesList.scrollHeight;
+  if(!activeChat) return; // ignore private messages if not in private chat with that user
+  if(activeChat !== from) return;
+
+  try {
+    const decrypted = CryptoJS.AES.decrypt(message, chatKey).toString(CryptoJS.enc.Utf8);
+    const li = document.createElement("li");
+    li.className = "message private";
+    li.innerHTML = `<strong>(Private) ${from}:</strong> ${decrypted}`;
+    messagesList.appendChild(li);
+    messagesList.scrollTop = messagesList.scrollHeight;
+  } catch(e) {
+    console.warn("Failed to decrypt message with current key.");
+  }
 });
 
 // RECEIVE PUBLIC MESSAGE
 socket.on("chat message", msg => {
-  if(activeChat === null) { // only show if public chat is active
+  if(activeChat === null) {
     const li = document.createElement("li");
     li.className = "message";
     li.innerHTML = `<strong>${msg.user}:</strong> ${msg.text}`;
@@ -103,9 +121,9 @@ chatForm.onsubmit = e => {
   const text = msgInput.value.trim();
   if(!text) return;
 
-  if(activeChat) {
-    // private message
-    const encrypted = CryptoJS.AES.encrypt(text, chatKeys[activeChat]).toString();
+  if(activeChat && chatKey) {
+    // Encrypt private message
+    const encrypted = CryptoJS.AES.encrypt(text, chatKey).toString();
     socket.emit("private message", { to: activeChat, message: encrypted });
 
     const li = document.createElement("li");
@@ -113,7 +131,7 @@ chatForm.onsubmit = e => {
     li.innerHTML = `<strong>(Private) You → ${activeChat}:</strong> ${text}`;
     messagesList.appendChild(li);
   } else {
-    // public message
+    // Public message
     socket.emit("chat message", { text });
     const li = document.createElement("li");
     li.className = "message";
@@ -127,3 +145,4 @@ chatForm.onsubmit = e => {
 </script>
 </body>
 </html>
+
