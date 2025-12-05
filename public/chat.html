@@ -51,8 +51,7 @@ let encryptionKey = null;
 fetch("/api/current-user")
   .then(res => res.json())
   .then(data => {
-      username = data.username;
-      if (!username) username = "Anonymous";
+      username = data.username || "Anonymous";
 
       socket = io();
       socket.emit("join", username);
@@ -82,9 +81,14 @@ function setupSocketHandlers() {
 
     // Private messages
     socket.on("private message", ({ from, message }) => {
+        // Only display if privateMode matches and key is correct
         if (privateMode && privateTarget === from) {
-            let displayMsg = encryptionKey ? decrypt(message, encryptionKey) : message;
-            addMessage(from, displayMsg, true);
+            try {
+                let displayMsg = decrypt(message, encryptionKey);
+                addMessage(from, displayMsg, true);
+            } catch (e) {
+                console.warn("Failed to decrypt private message: wrong key?");
+            }
         }
     });
 
@@ -158,3 +162,4 @@ function exitPrivateChat() {
 
 </body>
 </html>
+
