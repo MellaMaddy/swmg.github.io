@@ -10,8 +10,6 @@ if (!isset($_SESSION['user_id'])) {
 // ------------------------------
 // CONNECT TO DATABASE
 // ------------------------------
-
-// Example PostgreSQL PDO connection — CHANGE THIS to match your setup:
 $dsn = "pgsql:host=dpg-d4oth9emcj7s7383up4g-a.oregon-postgres.render.com;port=5432;dbname=chatdb2";
 $db_user = "chatdb2_user";
 $db_pass = "S12vb463kNHbW9nPFux8V4J4rCHQuQWL";
@@ -24,7 +22,7 @@ try {
 }
 
 // ------------------------------
-// FETCH USERNAME FROM DATABASE
+// FETCH USERNAME
 // ------------------------------
 $user_id = $_SESSION['user_id'];
 
@@ -49,16 +47,13 @@ $username = $user['username'];
 </head>
 <body>
 
-    <!-- Chat Layout With User List + Chat Window -->
     <div id="chat-layout" style="display:flex;">
 
-        <!-- Online User List -->
         <div id="user-list-panel">
             <h3>Users</h3>
             <ul id="user-list"></ul>
         </div>
 
-        <!-- Main Chat Container -->
         <div class="chat-container">
             <h2>Chat Room</h2>
 
@@ -74,8 +69,8 @@ $username = $user['username'];
     <script src="/socket.io/socket.io.js"></script>
 
     <script>
-        // Username from PHP session/database
-        const username = "<?php echo htmlspecialchars($username); ?>";
+        // 100% CORRECT username injection
+        const username = "<?php echo htmlspecialchars($username, ENT_QUOTES, 'UTF-8'); ?>";
 
         const socket = io();
         const messagesList = document.getElementById("messages");
@@ -83,7 +78,7 @@ $username = $user['username'];
         // Send username to server
         socket.emit("set username", username);
 
-        // Update user list
+        // Update online users
         socket.on("user list", (users) => {
             const list = document.getElementById("user-list");
             list.innerHTML = "";
@@ -98,14 +93,14 @@ $username = $user['username'];
             });
         });
 
-        // Private Message
+        // Private message
         function openPrivateMessage(targetUser) {
-            const message = prompt(`Send private message to ${targetUser}:`);
-            if (!message) return;
+            const msg = prompt(`Send private message to ${targetUser}:`);
+            if (!msg) return;
 
             socket.emit("private message", {
                 to: targetUser,
-                message,
+                message: msg,
                 from: username
             });
         }
@@ -117,7 +112,7 @@ $username = $user['username'];
             messagesList.appendChild(li);
         });
 
-        // Send Public Message
+        // Send public message
         document.getElementById("chat-form").onsubmit = (e) => {
             e.preventDefault();
             const input = document.getElementById("msg");
@@ -128,7 +123,7 @@ $username = $user['username'];
             input.value = "";
         };
 
-        // Receive Public Message
+        // Receive public message
         socket.on("chat message", (msg) => {
             const li = document.createElement("li");
             li.className = "message";
@@ -140,4 +135,5 @@ $username = $user['username'];
 
 </body>
 </html>
+
 
