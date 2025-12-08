@@ -6,11 +6,13 @@ const session = require("express-session");
 const { Pool } = require("pg");
 const path = require("path");
 
+
+//basic server setup
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// DATABASE ------------------------------------------
+// DATABASE connection
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
@@ -93,12 +95,12 @@ app.post("/login", async (req, res) => {
     }
 });
 
-// CHAT PAGE
+// Only logged in users can get to chat.html
 app.get("/chat.html", auth, (req, res) => {
     res.sendFile(path.join(__dirname, "public", "chat.html"));
 });
 
-// API: GET CURRENT USER
+// API: GET CURRENT USER (used by chat.html to get the username)
 app.get("/api/current-user", auth, (req, res) => {
     res.json({
         userId: req.session.userId,
