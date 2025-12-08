@@ -38,34 +38,6 @@ if (!$user) {
 
 $username = $user['username'];
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Chat Room</title>
-    <link rel="stylesheet" href="login.css">
-</head>
-<body>
-
-    <div id="chat-layout" style="display:flex;">
-
-        <div id="user-list-panel">
-            <h3>Users</h3>
-            <ul id="user-list"></ul>
-        </div>
-
-        <div class="chat-container">
-            <h2>Chat Room</h2>
-
-            <ul id="messages"></ul>
-
-            <form id="chat-form">
-                <input type="text" id="msg" placeholder="Type your message..." autocomplete="off" required>
-                <button type="submit">Send</button>
-            </form>
-        </div>
-    </div>
-
     <script src="/socket.io/socket.io.js"></script>
 
     <script>
